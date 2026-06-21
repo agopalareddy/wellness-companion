@@ -64,6 +64,26 @@ def collect_feedback(feedback: Feedback) -> dict[str, str]:
     return {"status": "success"}
 
 
+@app.get("/api/patient/{patient_id}")
+def get_patient_data(patient_id: str) -> dict:
+    """Retrieve database record for a patient to load past history."""
+    import json
+    db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "mock_secure_db.json"))
+    if not os.path.exists(db_path):
+        return {"error": "Database not found"}
+    try:
+        with open(db_path) as f:
+            db = json.load(f)
+            patients = db.get("patients", {})
+            patient_id_clean = patient_id.lower().strip()
+            if patient_id_clean in patients:
+                return patients[patient_id_clean]
+            else:
+                return {"error": f"Patient '{patient_id}' not found"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # Main execution
 if __name__ == "__main__":
     import uvicorn

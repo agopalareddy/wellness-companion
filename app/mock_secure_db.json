@@ -1,6 +1,71 @@
-[
-  {
-    "mood_score": 2,
-    "medication_compliance": false
+{
+  "patients": {
+    "arthur": {
+      "name": "Arthur Pendelton",
+      "address": "1428 Elm Street",
+      "phone": "555-0199",
+      "medications": {
+        "cardiovascular": {
+          "name": "Cardiovascular Support (1 tablet)",
+          "time": "Morning (08:00 AM)",
+          "status": "pending"
+        },
+        "multivitamin": {
+          "name": "Daily Multivitamin (1 tablet)",
+          "time": "Noon (12:00 PM)",
+          "status": "pending"
+        },
+        "sleep_aid": {
+          "name": "Gentle Sleep Aid (1 tablet)",
+          "time": "Night (09:00 PM)",
+          "status": "pending"
+        }
+      },
+      "mood_history": [5, 6, 5],
+      "compliance_history": [true, true, true]
+    },
+    "beatrice": {
+      "name": "Beatrice Vance",
+      "address": "742 Evergreen Terrace",
+      "phone": "555-0143",
+      "medications": {
+        "insulin": {
+          "name": "Insulin injection",
+          "time": "Morning (07:30 AM)",
+          "status": "pending"
+        },
+        "multivitamin": {
+          "name": "Daily Multivitamin (1 tablet)",
+          "time": "Noon (12:00 PM)",
+          "status": "pending"
+        },
+        "blood_pressure": {
+          "name": "Blood Pressure Regulator (1 tablet)",
+          "time": "Night (08:00 PM)",
+          "status": "pending"
+        }
+      },
+      "mood_history": [7, 8, 7],
+      "compliance_history": [true, true, true]
+    },
+    "charles": {
+      "name": "Charles Darwin",
+      "address": "Down House, Kent",
+      "phone": "555-0182",
+      "medications": {
+        "digestive_enzyme": {
+          "name": "Digestive Enzyme Capsule",
+          "time": "Morning (08:00 AM)",
+          "status": "pending"
+        },
+        "vitamin_d": {
+          "name": "Vitamin D3 Supplement",
+          "time": "Noon (12:00 PM)",
+          "status": "pending"
+        }
+      },
+      "mood_history": [6, 6, 7],
+      "compliance_history": [true, true, true]
+    }
   }
-]
+}

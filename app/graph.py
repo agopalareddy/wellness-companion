@@ -27,6 +27,7 @@ from .tools import anonymizer_toolset, companion_toolset
 class WellnessState(BaseModel):
     """Central state tracking variables for the wellness companion."""
 
+    patient_id: str = "arthur"
     conversational_history: list[str] = Field(default_factory=list)
     current_mood_score: int = 5
     medication_compliance_flag: bool = True
@@ -66,6 +67,8 @@ class AnonymizedMetrics(BaseModel):
 @node
 def log_input_node(ctx: Context, node_input: types.Content) -> Event:
     """Pre-processing node: logs the user prompt to conversational history state."""
+    patient_id = ctx.session.user_id if (ctx.session and ctx.session.user_id) else "arthur"
+    
     # Extract text content from standard GenAI Content type
     user_text = ""
     if node_input and node_input.parts:
@@ -73,13 +76,32 @@ def log_input_node(ctx: Context, node_input: types.Content) -> Event:
         user_text = " ".join(parts_text)
 
     history = ctx.state.get("conversational_history", [])
+    
+    # Prepend system profile message on the first turn
+    if not history:
+        import json
+        import os
+        db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "mock_secure_db.json"))
+        patient_name = "Arthur Pendelton"
+        if os.path.exists(db_path):
+            try:
+                with open(db_path) as f:
+                    db = json.load(f)
+                    patient_name = db.get("patients", {}).get(patient_id, {}).get("name", "Arthur Pendelton")
+            except Exception:
+                pass
+        history.append(f"System: You are conversing with patient {patient_name} (ID: {patient_id}). Always call get_medication_schedule with patient_id='{patient_id}' and log_wellness_metrics with patient_id='{patient_id}'.")
+
     history.append(f"User: {user_text}")
 
-    # State Transition: Save user message in conversational_history
+    # State Transition: Save user message in conversational_history and set patient_id
     return Event(
         output=user_text,
         actions=EventActions(
-            state_delta={"conversational_history": history},
+            state_delta={
+                "conversational_history": history,
+                "patient_id": patient_id
+            },
         ),
     )
 
@@ -93,9 +115,10 @@ companion_node = LlmAgent(
     instruction="""You are an empathetic, ambient, privacy-first wellness companion for elderly care.
 Your primary tasks:
 1. Converse empathetically with the patient.
-2. Call the `get_medication_schedule` tool to retrieve the active medication routine.
-3. Determine medication compliance and mood score based on the patient's check-in.
-4. Output the structured companion response, compliance, and mood score.
+2. Read the patient_id from the conversation history/state (e.g. 'arthur', 'beatrice', or 'charles').
+3. Call the `get_medication_schedule` tool with that patient_id to retrieve the active medication routine.
+4. Determine medication compliance and mood score based on the patient's check-in.
+5. Output the structured companion response, compliance, and mood score.
 
 Security constraint: You have NO access to database logging tools. You must rely on the next node for telemetry logging.
 """,
@@ -115,7 +138,7 @@ You will receive the structured wellness data from the CompanionNode.
 Your tasks:
 1. Parse the mood score and medication compliance fields.
 2. Completely strip out any PII, text chat logs, or conversational content.
-3. Call the `log_wellness_metrics` tool to store the anonymized metrics: {"mood_score": mood_score, "medication_compliance": compliance}.
+3. Call the `log_wellness_metrics` tool to store the anonymized metrics. You MUST retrieve the patient_id from the state/history and pass it: log_wellness_metrics(patient_id=patient_id, metrics={"mood_score": mood_score, "medication_compliance": compliance}).
 4. Output the structured anonymized metrics.
 """,
     tools=[anonymizer_toolset],

@@ -20,55 +20,87 @@ from mcp.server.fastmcp import FastMCP
 # Initialize FastMCP Server
 mcp = FastMCP("WellnessCompanionServer")
 
-
-@mcp.tool()
-def get_medication_schedule() -> str:
-    """Pull the local daily medication schedule for the elderly patient.
-
-    Returns:
-        A string describing the active medication schedule.
-    """
-    return (
-        "Daily Medication Schedule:\n"
-        "- Morning (08:00): Cardiovascular support (1 tablet)\n"
-        "- Evening (20:00): Cholesterol management (1 tablet)\n"
-        "Please check if the patient has taken their medication."
-    )
+DB_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "mock_secure_db.json")
+)
 
 
-@mcp.tool()
-def log_wellness_metrics(metrics: dict) -> str:
-    """Log anonymized wellness metrics to the secure local database file.
-
-    Args:
-        metrics: A dictionary containing metrics. It must NOT contain PII or chat text.
-                 Format: {"mood_score": int, "medication_compliance": bool, "consecutive_missed_cycles": int}
-
-    Returns:
-        A confirmation message indicating success.
-    """
-    # Secure, local mock database file path (mock_secure_db.json)
-    db_path = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "mock_secure_db.json")
-    )
-
-    # Read existing metrics
-    data = []
-    if os.path.exists(db_path):
+def load_db() -> dict:
+    if os.path.exists(DB_PATH):
         try:
-            with open(db_path) as f:
-                data = json.load(f)
+            with open(DB_PATH) as f:
+                return json.load(f)
         except Exception:
-            data = []
+            pass
+    return {"patients": {}}
 
-    # Append the new metrics
-    data.append(metrics)
 
-    # Write back
-    with open(db_path, "w") as f:
+def save_db(data: dict) -> None:
+    with open(DB_PATH, "w") as f:
         json.dump(data, f, indent=2)
 
-    return f"Successfully logged anonymized telemetry metrics: {json.dumps(metrics)}"
+
+@mcp.tool()
+def get_medication_schedule(patient_id: str) -> str:
+    """Pull the daily medication schedule for the elderly patient.
+
+    Args:
+        patient_id: The ID of the patient (e.g., 'arthur', 'beatrice', 'charles').
+    """
+    db = load_db()
+    patient_id = patient_id.lower().strip()
+    patients = db.get("patients", {})
+    if patient_id not in patients:
+        return f"Error: Patient ID '{patient_id}' not found in database."
+
+    patient = patients[patient_id]
+    meds = patient.get("medications", {})
+
+    schedule_lines = [f"Daily Medication Schedule for {patient.get('name')}:"]
+    for med_id, med_info in meds.items():
+        schedule_lines.append(f"- {med_info.get('time')}: {med_info.get('name')}")
+    schedule_lines.append(
+        "Please verify if the patient has complied with their medication schedule."
+    )
+
+    return "\n".join(schedule_lines)
+
+
+@mcp.tool()
+def log_wellness_metrics(patient_id: str, metrics: dict) -> str:
+    """Log anonymized wellness metrics to the secure local database file for a specific patient.
+
+    Args:
+        patient_id: The ID of the patient.
+        metrics: A dictionary containing metrics. It must NOT contain PII or chat text.
+                 Format: {"mood_score": int, "medication_compliance": bool}
+    """
+    db = load_db()
+    patient_id = patient_id.lower().strip()
+    patients = db.get("patients", {})
+    if patient_id not in patients:
+        return f"Error: Patient ID '{patient_id}' not found in database."
+
+    patient = patients[patient_id]
+    mood = metrics.get("mood_score", 5)
+    compliance = metrics.get("medication_compliance", True)
+
+    # Append history
+    if "mood_history" not in patient:
+        patient["mood_history"] = []
+    patient["mood_history"].append(mood)
+
+    if "compliance_history" not in patient:
+        patient["compliance_history"] = []
+    patient["compliance_history"].append(compliance)
+
+    # Update current medications status based on compliance
+    meds = patient.get("medications", {})
+    for med_id, med_info in meds.items():
+        med_info["status"] = "taken" if compliance else "missed"
+
+    save_db(db)
+    return f"Successfully logged metrics for {patient.get('name')}: {json.dumps(metrics)}"
 
 
 if __name__ == "__main__":
