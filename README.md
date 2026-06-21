@@ -1,0 +1,92 @@
+# Ambient Wellness Companion for Elderly Care (Agents for Good)
+
+An ambient, privacy-first wellness companion designed for elderly care. This project utilizes the **Agent Development Kit (ADK 2.0)** framework to orchestrate a state-driven multi-agent system. It maintains an empathetic conversation loop with the user, fetches their medication schedules, anonymizes telemetry to strip out PII, and automatically escalates critical wellness drops or medication compliance failures.
+
+---
+
+## 🌟 Core Architecture & Multi-Agent Flow
+
+The companion is built as a state-driven graph containing three distinct, isolated agent/logic nodes. Below is the workflow diagram:
+
+```mermaid
+graph TD
+    START[START: User Input Message] --> log_input_node[log_input_node: Pre-processor]
+    log_input_node --> CompanionNode[CompanionNode: Empathetic LLM Agent]
+    CompanionNode -- "Yields CompanionOutput (mood, compliance)" --> AnonymizerNode[AnonymizerNode: Privacy LLM Agent]
+    AnonymizerNode -- "Yields AnonymizedMetrics" --> EscalationNode[EscalationNode: Python Rule Engine]
+    
+    EscalationNode -- "Missed Cycles >= 2 OR Mood Score < 3" --> alert_node[alert_node: Critical Escalation]
+    EscalationNode -- "Normal State" --> normal_end_node[normal_end_node: Empathetic Response]
+```
+
+### 1. Nodes & Execution Logic
+*   **log_input_node**: A pre-processing Python node that intercepts incoming messages, formats them, and records the raw user prompt into the session's conversational history state.
+*   **CompanionNode (Empathetic Agent)**: A Gemini 3.5 Flash agent that conducts natural language check-ins, checks on the patient's mood and wellness, and pulls daily medication routines.
+*   **AnonymizerNode (Privacy Guard)**: An isolated Gemini 3.5 Flash agent that intercepts the telemetry data. It parses the mood and compliance info, strips out raw text or PII, and logs anonymous metrics to the database.
+*   **EscalationNode (State Evaluator)**: A Python rule engine that updates the compliance metrics (e.g. consecutive missed cycles) and performs conditional routing to trigger emergency alerts.
+
+---
+
+## 🔒 Security and Tool Isolation (Least Privilege)
+
+To guarantee patient privacy, we enforce a strict **least-privilege security model** using filtered **Model Context Protocol (MCP)** toolsets:
+
+1.  **Tool Separation**: The local MCP server (`app/mcp_server.py`) exposes `get_medication_schedule` and `log_wellness_metrics`.
+2.  **Explicit Boundaries**:
+    *   **CompanionNode** is provided only with `companion_toolset` (which filters and exposes *only* the `get_medication_schedule` tool). It has **no access** to the database tool.
+    *   **AnonymizerNode** is provided only with `anonymizer_toolset` (which exposes *only* the `log_wellness_metrics` tool).
+3.  **Strict Routing**: Any telemetry logging must be forwarded from the `CompanionNode` to the `AnonymizerNode`. The system physically prevents the companion agent from writing directly to the secure mock database file.
+
+---
+
+## 📊 State Schema (WellnessState)
+
+The central state tracks patient history and compliance counters:
+
+```python
+class WellnessState(BaseModel):
+    conversational_history: list[str] = Field(default_factory=list) # Full conversation history
+    current_mood_score: int = 5                                     # Mood rating (1-10)
+    medication_compliance_flag: bool = True                         # Compliance check
+    consecutive_missed_cycles: int = 0                              # Multi-turn missed cycles tracker
+    escalation_triggered: bool = False                              # Alert status flag
+    companion_data: dict = Field(default_factory=dict)              # Companion LLM output storage
+    anonymized_data: dict = Field(default_factory=dict)             # Anonymizer telemetry storage
+```
+
+### State Routing Rules:
+*   **Medication Compliance**: If compliance is `True`, `consecutive_missed_cycles` resets to `0`. If `False`, it increments by `1`.
+*   **Escalation**: If `consecutive_missed_cycles >= 2` OR `current_mood_score < 3` (critical threshold), the graph routes to `alert_node`, bypassing normal loops and setting `escalation_triggered` to `True`.
+
+---
+
+## 🛠️ Quick Start & Setup
+
+### Prerequisites
+Make sure you have `uv` installed, then set up the google-agents-cli:
+```bash
+uv tool install google-agents-cli
+agents-cli setup
+```
+
+### Installation
+Sync project dependencies (installs `google-adk`, `mcp`, and linting utilities):
+```bash
+agents-cli install
+```
+
+### Running the App
+Run the interactive local playground to converse with the wellness companion:
+```bash
+agents-cli playground
+```
+
+### Running Tests and Linting
+To check code quality and execute unit tests (which validate the escalation logic in isolation):
+```bash
+# Run styling checks
+agents-cli lint
+
+# Execute isolated state transition unit tests
+uv run pytest tests/unit
+```
