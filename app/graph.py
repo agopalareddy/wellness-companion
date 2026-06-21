@@ -20,10 +20,10 @@ from google.adk.workflow import START, Edge, Workflow, node
 from google.genai import types
 from pydantic import BaseModel, Field
 
-from .tools import anonymizer_toolset, companion_toolset
+from .mcp_server import apply_wellness_metrics
+from .tools import companion_toolset
 
 
-# --- Graph State Schema ---
 class WellnessState(BaseModel):
     """Central state tracking variables for the wellness companion."""
 
@@ -37,7 +37,6 @@ class WellnessState(BaseModel):
     anonymized_data: dict = Field(default_factory=dict)
 
 
-# --- Node Output Schemas ---
 class CompanionOutput(BaseModel):
     """Output schema for CompanionNode containing LLM evaluation."""
 
@@ -57,7 +56,7 @@ class CompanionOutput(BaseModel):
 
 
 class AnonymizedMetrics(BaseModel):
-    """Output schema for AnonymizerNode confirming telemetry fields."""
+    """Structured telemetry fields passed to escalation after allowlist persistence."""
 
     mood_score: int = Field(description="Anonymized mood score of the patient.")
     medication_compliance: bool = Field(
@@ -69,23 +68,18 @@ class AnonymizedMetrics(BaseModel):
     )
 
 
-# --- Node Logic ---
-
-
 @node
 def log_input_node(ctx: Context, node_input: types.Content) -> Event:
     """Pre-processing node: logs the user prompt to conversational history state."""
     patient_id = ctx.session.user_id if (ctx.session and ctx.session.user_id) else "arthur"
-    
-    # Extract text content from standard GenAI Content type
+
     user_text = ""
     if node_input and node_input.parts:
         parts_text = [p.text for p in node_input.parts if p.text]
         user_text = " ".join(parts_text)
 
     history = ctx.state.get("conversational_history", [])
-    
-    # Prepend system profile message on the first turn
+
     if not history:
         import json
         import os
@@ -98,11 +92,13 @@ def log_input_node(ctx: Context, node_input: types.Content) -> Event:
                     patient_name = db.get("patients", {}).get(patient_id, {}).get("name", "Arthur Pendelton")
             except Exception:
                 pass
-        history.append(f"System: You are conversing with patient {patient_name} (ID: {patient_id}). Always call get_medication_schedule with patient_id='{patient_id}' and log_wellness_metrics with patient_id='{patient_id}'.")
+        history.append(
+            f"System: You are conversing with patient {patient_name} (ID: {patient_id}). "
+            f"Always call get_medication_schedule with patient_id='{patient_id}'."
+        )
 
     history.append(f"User: {user_text}")
 
-    # State Transition: Save user message in conversational_history and set patient_id
     return Event(
         output=user_text,
         actions=EventActions(
@@ -126,62 +122,57 @@ Your primary tasks:
 2. Read the patient_id from the conversation history/state (e.g. 'arthur', 'beatrice', or 'charles').
 3. Call the `get_medication_schedule` tool with that patient_id to retrieve the active medication routine.
 4. Determine overall medication compliance, mood score, and individual medication status updates ('taken', 'missed', or 'pending') based on the patient's check-in.
-5. Populate the `medication_updates` dictionary with updates for any medications discussed (keys are medication IDs like 'cardiovascular', 'multivitamin', etc.).
+5. Populate `medication_updates` with the status of each medication the patient mentioned. Keys must be medication IDs from the schedule (e.g. 'digestive_enzyme', 'vitamin_d', 'insulin'). Values must be 'taken', 'missed', or 'pending'. Only include medications discussed in this check-in — never infer status for unmentioned meds from overall compliance.
 6. Output the structured companion response, overall compliance, mood score, and medication updates.
 
-Security constraint: You have NO access to database logging tools. You must rely on the next node for telemetry logging.
+Security constraint: You have NO access to database logging tools. Telemetry is persisted by a separate deterministic privacy guard node.
 """,
     tools=[companion_toolset],
     output_schema=CompanionOutput,
     output_key="companion_data",
 )
 
-anonymizer_node = LlmAgent(
-    name="AnonymizerNode",
-    model=Gemini(
-        model="gemini-3.5-flash",
-        retry_options=types.HttpRetryOptions(attempts=3),
-    ),
-    instruction="""You are a telemetry anonymization agent.
-You will receive the structured wellness data from the CompanionNode.
-Your tasks:
-1. Parse the mood score, overall medication compliance, and medication updates fields.
-2. Completely strip out any PII, text chat logs, or conversational content.
-3. Call the `log_wellness_metrics` tool to store the anonymized metrics. You MUST retrieve the patient_id from the state/history and pass it: log_wellness_metrics(patient_id=patient_id, metrics={"mood_score": mood_score, "medication_compliance": compliance, "medication_updates": medication_updates}).
-4. Output the structured anonymized metrics.
-""",
-    tools=[anonymizer_toolset],
-    output_schema=AnonymizedMetrics,
-    output_key="anonymized_data",
-)
+
+@node
+def persist_metrics_node(ctx: Context, node_input: CompanionOutput) -> Event:
+    """Deterministic privacy guard: allowlist-validated metrics write to patient JSON."""
+    patient_id = ctx.state.get("patient_id", "arthur")
+    metrics = {
+        "mood_score": node_input.mood_score,
+        "medication_compliance": node_input.medication_compliance,
+        "medication_updates": dict(node_input.medication_updates or {}),
+    }
+    result_msg = apply_wellness_metrics(patient_id, metrics)
+    anonymized = AnonymizedMetrics(**metrics)
+    return Event(
+        output=anonymized,
+        actions=EventActions(state_delta={"anonymized_data": metrics}),
+    )
 
 
 @node
 def escalation_node(ctx: Context, node_input: AnonymizedMetrics) -> Event:
-    """Evaluates system state and performs conditional routing to trigger alerts if needed.
-
-    State Transitions:
-    - If medication compliance is true, consecutive_missed_cycles is reset to 0.
-    - If medication compliance is false, consecutive_missed_cycles is incremented by 1.
-    - If consecutive_missed_cycles >= 2 or mood score < 3, escalation_triggered is set to True.
-    - conversational_history is updated to append the companion's response.
-    """
+    """Evaluates system state and performs conditional routing to trigger alerts if needed."""
     companion_data = ctx.state.get("companion_data", {})
     companion_resp = companion_data.get("companion_response", "All checked in!")
 
-    # Update conversational history
     history = ctx.state.get("conversational_history", [])
     history.append(f"Companion: {companion_resp}")
 
-    # Calculate consecutive missed cycles
     compliance = node_input.medication_compliance
     current_missed = ctx.state.get("consecutive_missed_cycles", 0)
     new_missed = 0 if compliance else current_missed + 1
 
     mood = node_input.mood_score
+    patient_id = ctx.state.get("patient_id", "unknown")
+    medication_updates = node_input.medication_updates or {}
 
-    # Trigger criteria: compliance missed 2+ times OR mood score below 3 (out of 10)
     escalate = (new_missed >= 2) or (mood < 3)
+    alert_reasons = []
+    if new_missed >= 2:
+        alert_reasons.append(f"{new_missed} consecutive medication non-compliance cycles")
+    if mood < 3:
+        alert_reasons.append(f"critical mood score {mood}/10")
 
     state_delta = {
         "conversational_history": history,
@@ -192,23 +183,31 @@ def escalation_node(ctx: Context, node_input: AnonymizedMetrics) -> Event:
     }
 
     if escalate:
-        # Route to alert node
+        updates_text = (
+            ", ".join(f"{med_id}: {status}" for med_id, status in medication_updates.items())
+            if medication_updates
+            else "no individual medication updates supplied"
+        )
         return Event(
-            output="CRITICAL ALERT: Wellness companion has triggered an escalation. Please check on the patient immediately.",
+            output=(
+                "CRITICAL ALERT: Wellness companion triggered escalation for "
+                f"patient_id={patient_id}. Reason: {'; '.join(alert_reasons)}. "
+                f"Latest compliance={'confirmed' if compliance else 'needs review'}; "
+                f"medication updates: {updates_text}. Please check on the patient immediately."
+            ),
             actions=EventActions(
                 route="escalate",
                 state_delta=state_delta,
             ),
         )
-    else:
-        # Route to normal end
-        return Event(
-            output=companion_resp,
-            actions=EventActions(
-                route="normal",
-                state_delta=state_delta,
-            ),
-        )
+
+    return Event(
+        output=companion_resp,
+        actions=EventActions(
+            route="normal",
+            state_delta=state_delta,
+        ),
+    )
 
 
 @node
@@ -223,16 +222,14 @@ def normal_end_node(node_input: str) -> str:
     return node_input
 
 
-# --- Graph Workflow Assembly ---
 wellness_graph = Workflow(
     name="wellness_companion_workflow",
     state_schema=WellnessState,
     edges=[
         Edge(from_node=START, to_node=log_input_node),
         Edge(from_node=log_input_node, to_node=companion_node),
-        Edge(from_node=companion_node, to_node=anonymizer_node),
-        Edge(from_node=anonymizer_node, to_node=escalation_node),
-        # Conditional edges for state-driven routing
+        Edge(from_node=companion_node, to_node=persist_metrics_node),
+        Edge(from_node=persist_metrics_node, to_node=escalation_node),
         Edge(from_node=escalation_node, to_node=alert_node, route="escalate"),
         Edge(from_node=escalation_node, to_node=normal_end_node, route="normal"),
     ],

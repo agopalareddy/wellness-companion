@@ -1,4 +1,41 @@
-# Coding Agent Guide
+# Coding Agent Guide — Wellness Companion
+
+Kaggle **Agents for Good** capstone: ambient elderly wellness check-ins via Google ADK 2.0 multi-agent graph.
+
+## Live demo
+
+- **Patient UI**: https://example.com/wellness/
+- **Provider UI**: https://example.com/wellness/provider/
+- **Server**: `YOUR_DEPLOY_HOST`, PM2 app `wellness-companion`, cwd `/path/to/wellness-companion`
+- **Deploy**: `rsync app/ to your deployment host && restart your app process manager`
+
+## Key files
+
+| Path | Role |
+|------|------|
+| `app/graph.py` | ADK workflow: CompanionNode → persist_metrics_node → EscalationNode |
+| `app/mcp_server.py` | MCP tools + `apply_wellness_metrics` (allowlist-validated JSON writes) |
+| `app/fast_api_app.py` | FastAPI routes: patient/provider APIs, CRUD, health, reset |
+| `app/aura_ui.py` | Patient, provider, and about HTML/CSS/JS (single file) |
+| `app/seed_db.json` | Canonical demo DB; `/api/reset` restores from this |
+| `app/mock_secure_db.json` | Runtime DB (git-tracked for demo reproducibility) |
+
+## Architecture notes
+
+- **Deterministic persistence**: `persist_metrics_node` calls `apply_wellness_metrics` directly — do not rely on LLM tool calls for JSON updates.
+- **Per-med updates**: Only keys in `medication_updates` change status. Empty dict + `medication_compliance: false` must NOT blanket-mark all meds missed.
+- **Tool isolation**: CompanionNode gets `get_medication_schedule` only; no DB write access.
+- **Subpath deploy**: Nav links in `aura_ui.py` use relative paths (`provider/`, `about/`, `..`). Routes redirect to trailing slashes (`/provider` → `/provider/`).
+- **Session UX**: Unlock buttons become **Log out** when patient/provider session is active.
+
+## Demo credentials
+
+| Role | Passcode |
+|------|----------|
+| Arthur | (env) |
+| Beatrice | (env) |
+| Charles | (env) |
+| Provider | (env) |
 
 ## Prerequisites
 
@@ -27,7 +64,7 @@ Run `uv run pytest tests/unit tests/integration`. Fix issues until all tests pas
 **Requires explicit human approval.** Run `agents-cli deploy` only after user confirms. See the **Deployment Guide** for details.
 
 ### Phase 6: Production Deployment
-Ask the user: Option A (simple single-project) or Option B (full CI/CD pipeline with `agents-cli infra cicd`).
+GCP showcase uses PM2 + nginx subpath (`/wellness/`). See README deployment section.
 
 ## Development Commands
 

@@ -188,6 +188,9 @@ Thumbs.db
 
 # ADK
 .adk/
+app/aura_activity.json
+.playwright-cli/
+.claude/
 
 # Agent CLI specific
 .persist_vector_store
