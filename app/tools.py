@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+import sys
 
 from google.adk.tools.mcp_tool import McpToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams
@@ -24,7 +25,7 @@ server_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "mcp_serve
 # MCP connection parameters for stdio protocol
 connection_params = StdioConnectionParams(
     server_params=StdioServerParameters(
-        command="python",
+        command=sys.executable,
         args=[server_path],
     )
 )
