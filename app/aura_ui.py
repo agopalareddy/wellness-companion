@@ -886,12 +886,16 @@ AURA_INDEX_HTML = """<!doctype html>
 
     async function loadDemoPasscodes() {
       const data = await api("/api/demo-passcodes");
-      $("demo-passcodes").innerHTML = data.profiles.map((profile) => `
-        <div class="demo-code">
-          <span>${escapeHtml(profile.name)}</span>
-          <strong>${escapeHtml(profile.passcode)}</strong>
-        </div>
-      `).join("");
+      if (!data.exposed) {
+        $("demo-passcodes").innerHTML = `<p class="muted">${escapeHtml(data.notice || "Passcodes are not published. Use credentials configured for this deployment.")}</p>`;
+      } else {
+        $("demo-passcodes").innerHTML = data.profiles.map((profile) => `
+          <div class="demo-code">
+            <span>${escapeHtml(profile.name)}</span>
+            <strong>${escapeHtml(profile.passcode || "—")}</strong>
+          </div>
+        `).join("");
+      }
       $("passcode-dialog").showModal();
     }
 
@@ -954,8 +958,11 @@ AURA_INDEX_HTML = """<!doctype html>
         $("security-dialog").showModal();
         return;
       }
-      addMessage("user", text);
-      await persistActivity({ kind: "message", summary: `Patient said: ${text}` });
+      if (app.busy && !retried) return;
+      if (!retried) {
+        addMessage("user", text);
+        await persistActivity({ kind: "message", summary: `Patient said: ${text}` });
+      }
       setBusy(true, "Agent processing check-in");
       addLog("Started Companion -> Privacy Guard -> Escalation workflow", "run");
       startLiveRefresh();
@@ -1569,7 +1576,7 @@ AURA_PROVIDER_HTML = """<!doctype html>
   <dialog id="provider-dialog" aria-labelledby="provider-dialog-title">
     <form id="provider-form" class="dialog-content">
       <h2 id="provider-dialog-title">Provider unlock</h2>
-      <p class="muted">Enter the provider passcode to manage patients. .</p>
+      <p class="muted">Enter the provider passcode configured for this deployment.</p>
       <div class="field">
         <label for="provider-passcode">Provider passcode</label>
         <input id="provider-passcode" type="password" inputmode="numeric" autocomplete="current-password" required>

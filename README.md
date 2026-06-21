@@ -21,17 +21,17 @@ graph TD
 
 ### Demo UI routes
 *   **Patient view** (`/`): passcode-gated check-in dashboard with live JSON panel and agent activity sidebar
-*   **Provider view** (`/provider/`): caregiver roster, live alerts, patient drill-down, JSON view, and patient CRUD (provider passcode via `PROVIDER_PASSCODE` env)
+*   **Provider view** (`/provider/`): caregiver roster, live alerts, patient drill-down, JSON view, and patient CRUD
 *   **About** (`/about/`): architecture overview for judges
 
-When deployed under a subpath (e.g. `example.com/wellness/`), nav links use relative paths and `/provider`/`/about` redirect to trailing-slash URLs so back-navigation works correctly.
+When deployed under a URL subpath, nav links use relative paths and `/provider`/`/about` redirect to trailing-slash URLs so back-navigation works correctly.
 
 Session controls: header buttons show **Unlock profile** / **Provider unlock** when logged out and **Log out** when a session is active.
 
 ### 1. Nodes & Execution Logic
 *   **log_input_node**: A pre-processing Python node that intercepts incoming messages, formats them, and records the raw user prompt into the session's conversational history state.
 *   **CompanionNode (Empathetic Agent)**: A Gemini 3.5 Flash agent that conducts natural language check-ins, checks on the patient's mood and wellness, and pulls daily medication routines.
-*   **persist_metrics_node (Privacy Guard)**: A deterministic Python node that applies a server-side allowlist (`validate_metrics`) and writes mood/compliance/medication status to `mock_secure_db.json`. No LLM tool call is required, so the patient JSON panel always updates after a check-in. Per-medication updates are applied only when explicitly present in `medication_updates` — unmentioned meds keep their current status.
+*   **persist_metrics_node (Privacy Guard)**: A deterministic Python node that applies a server-side allowlist (`validate_metrics`) and writes mood/compliance/medication status to `mock_secure_db.json`. No LLM tool call is required, so the patient JSON panel always updates after a check-in.
 *   **EscalationNode (State Evaluator)**: A Python rule engine that updates the compliance metrics (e.g. consecutive missed cycles) and performs conditional routing to trigger emergency alerts.
 
 ---
@@ -45,6 +45,12 @@ To guarantee patient privacy, we enforce a strict **least-privilege security mod
     *   **CompanionNode** is provided only with `companion_toolset` (which filters and exposes *only* the `get_medication_schedule` tool). It has **no access** to the database tool.
     *   **persist_metrics_node** calls `apply_wellness_metrics` directly with an allowlist guard — only `mood_score`, `medication_compliance`, and `medication_updates` may be stored.
 3.  **Strict Routing**: The companion agent cannot write to the secure mock database file. Telemetry persistence happens only in the deterministic privacy guard node after structured companion output is available.
+4.  **Credentials**: Patient and provider passcodes are **not** stored in git. Configure them via environment variables (see `.env.example`). The demo passcode API is hidden unless `EXPOSE_DEMO_PASSCODES=true`.
+
+### Medication status rules (`apply_wellness_metrics`)
+*   **Explicit updates**: Only keys in `medication_updates` are changed when the companion provides per-med status.
+*   **Full compliance fallback**: If `medication_compliance` is `true` and `medication_updates` is empty, all scheduled meds are marked `taken`.
+*   **Partial/non-compliance**: If `medication_compliance` is `false` and updates are empty, existing med statuses are left unchanged (avoids incorrectly marking everything missed).
 
 ---
 
@@ -65,7 +71,7 @@ class WellnessState(BaseModel):
 
 ### State Routing Rules:
 *   **Medication Compliance**: If compliance is `True`, `consecutive_missed_cycles` resets to `0`. If `False`, it increments by `1`.
-*   **Per-medication status**: `medication_updates` maps med IDs (e.g. `digestive_enzyme`, `vitamin_d`) to `taken`/`missed`/`pending`. Empty updates do not blanket-mark all meds.
+*   **Per-medication status**: `medication_updates` maps med IDs (e.g. `digestive_enzyme`, `vitamin_d`) to `taken`/`missed`/`pending`.
 *   **Escalation**: If `consecutive_missed_cycles >= 2` OR `current_mood_score < 3` (critical threshold), the graph routes to `alert_node`, bypassing normal loops and setting `escalation_triggered` to `True`.
 
 ---
@@ -82,23 +88,7 @@ class WellnessState(BaseModel):
 | `DELETE /api/patient/{id}` | `X-Provider-Passcode` | Delete patient |
 | `PATCH /api/patient/{id}/type` | `X-Provider-Passcode` | Toggle demo vs real patient |
 
-Patient passcodes: configure via `PASSCODE_*` env vars. Reset demo data via **Reset demo data** in the patient UI (`POST /api/reset` restores from `app/seed_db.json`).
-
----
-
-## 🚀 Production deployment (GCP showcase)
-
-Live demo: [example.com/wellness/](https://example.com/wellness/)
-
-```bash
-# Sync app code to server
-rsync app/ to your deployment host
-
-# Restart
-restart your app process manager
-```
-
-Nginx proxies `/wellness/` → `127.0.0.1:8090/`. PM2 cwd: `/path/to/wellness-companion`.
+Reset demo data via **Reset demo data** in the patient UI (`POST /api/reset` restores clinical data from `app/seed_db.json`).
 
 ---
 
@@ -115,6 +105,7 @@ agents-cli setup
 Sync project dependencies (installs `google-adk`, `mcp`, and linting utilities):
 ```bash
 agents-cli install
+cp .env.example .env   # then set passcodes locally
 ```
 
 ### Running the App
@@ -122,6 +113,19 @@ Run the interactive local playground to converse with the wellness companion:
 ```bash
 agents-cli playground
 ```
+
+Or serve the FastAPI demo UI:
+```bash
+uv run uvicorn app.fast_api_app:app --host 127.0.0.1 --port 8000
+```
+
+### Environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `PROVIDER_PASSCODE` | Provider dashboard auth (required for CRUD) |
+| `PASSCODE_ARTHUR` / `PASSCODE_BEATRICE` / `PASSCODE_CHARLES` | Patient profile unlock codes |
+| `EXPOSE_DEMO_PASSCODES` | Set `true` locally to show passcodes in the UI helper |
 
 ### Running Tests and Linting
 To check code quality and execute unit tests (which validate the escalation logic in isolation):

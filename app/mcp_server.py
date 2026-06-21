@@ -147,16 +147,25 @@ def apply_wellness_metrics(patient_id: str, metrics: dict) -> str:
     patient["compliance_history"].append(compliance)
 
     meds = patient.get("medications", {})
-    for med_id, status in medication_updates.items():
-        med_id_clean = med_id.lower().strip()
-        if med_id_clean in meds:
-            meds[med_id_clean]["status"] = status
+    if medication_updates:
+        for med_id, status in medication_updates.items():
+            med_id_clean = med_id.lower().strip()
+            if med_id_clean in meds:
+                meds[med_id_clean]["status"] = status
+    elif compliance:
+        # Full compliance with no per-med breakdown: mark every scheduled med taken.
+        for med_info in meds.values():
+            med_info["status"] = "taken"
 
     updated_labels = [
         f"{meds[med_id.lower().strip()].get('name', med_id)} -> {status}"
         for med_id, status in medication_updates.items()
         if med_id.lower().strip() in meds
     ]
+    if not updated_labels and compliance and meds and not medication_updates:
+        updated_labels = [
+            f"{med_info.get('name', med_id)} -> taken" for med_id, med_info in meds.items()
+        ]
 
     activity_log = patient.setdefault("activity_log", [])
     activity_log.insert(

@@ -268,6 +268,20 @@ def test_apply_wellness_metrics_partial_updates_only(monkeypatch) -> None:
         apply_wellness_metrics(
             "charles",
             {
+                "mood_score": 7,
+                "medication_compliance": True,
+                "medication_updates": {},
+            },
+        )
+        with open(db_file) as f:
+            full_compliance_db = json.load(f)
+        meds = full_compliance_db["patients"]["charles"]["medications"]
+        assert meds["digestive_enzyme"]["status"] == "taken"
+        assert meds["vitamin_d"]["status"] == "taken"
+
+        apply_wellness_metrics(
+            "charles",
+            {
                 "mood_score": 5,
                 "medication_compliance": False,
                 "medication_updates": {

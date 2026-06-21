@@ -122,7 +122,7 @@ Your primary tasks:
 2. Read the patient_id from the conversation history/state (e.g. 'arthur', 'beatrice', or 'charles').
 3. Call the `get_medication_schedule` tool with that patient_id to retrieve the active medication routine.
 4. Determine overall medication compliance, mood score, and individual medication status updates ('taken', 'missed', or 'pending') based on the patient's check-in.
-5. Populate `medication_updates` with the status of each medication the patient mentioned. Keys must be medication IDs from the schedule (e.g. 'digestive_enzyme', 'vitamin_d', 'insulin'). Values must be 'taken', 'missed', or 'pending'. Only include medications discussed in this check-in — never infer status for unmentioned meds from overall compliance.
+5. Populate `medication_updates` with the status of each medication the patient mentioned. Keys must be medication IDs from the schedule (e.g. `digestive_enzyme`, `vitamin_d`, `insulin`). Values must be `taken`, `missed`, or `pending`. When the patient confirms all medications were taken, list every scheduled med ID as `taken`. When only some were taken or missed, include only those discussed — do not mark unmentioned meds from overall compliance alone.
 6. Output the structured companion response, overall compliance, mood score, and medication updates.
 
 Security constraint: You have NO access to database logging tools. Telemetry is persisted by a separate deterministic privacy guard node.

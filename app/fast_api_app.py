@@ -16,6 +16,10 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import google.auth
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -30,6 +34,7 @@ from app.aura_ui import AURA_ABOUT_HTML, AURA_INDEX_HTML, AURA_PROVIDER_HTML
 setup_telemetry()
 
 PROVIDER_PASSCODE = os.getenv("PROVIDER_PASSCODE", "")
+EXPOSE_DEMO_PASSCODES = os.getenv("EXPOSE_DEMO_PASSCODES", "false").lower() == "true"
 
 if os.getenv("INTEGRATION_TEST") == "TRUE":
     import logging as python_logging
@@ -113,6 +118,23 @@ def save_db(data: dict) -> None:
     save_json(DB_PATH, data)
 
 
+def resolve_patient_passcode(patient_id: str, stored: str | None = None) -> str | None:
+    env_code = os.getenv(f"PASSCODE_{patient_id.upper()}")
+    if env_code:
+        return env_code
+    return stored or None
+
+
+def apply_passcodes_from_env(db: dict) -> dict:
+    for patient_id, pdata in db.get("patients", {}).items():
+        code = resolve_patient_passcode(patient_id, pdata.get("passcode"))
+        if code:
+            pdata["passcode"] = code
+        else:
+            pdata.pop("passcode", None)
+    return db
+
+
 def slugify_patient_id(value: str) -> str:
     cleaned = re.sub(r"[^a-z0-9]+", "_", value.lower().strip())
     return cleaned.strip("_") or "patient"
@@ -177,7 +199,7 @@ def patient_has_alert(patient_id: str, patient: dict) -> bool:
 
 
 def require_provider(x_provider_passcode: str | None = Header(default=None)) -> None:
-    if x_provider_passcode != PROVIDER_PASSCODE:
+    if not PROVIDER_PASSCODE or x_provider_passcode != PROVIDER_PASSCODE:
         raise HTTPException(status_code=403, detail="Provider passcode required")
 
 
@@ -293,18 +315,20 @@ def list_patients() -> dict:
 @app.get("/api/demo-passcodes")
 def list_demo_passcodes() -> dict:
     patients = load_db().get("patients", {})
-    return {
-        "notice": "Demo profiles only. Do not use these passcodes in production.",
-        "profiles": [
-            {
-                "id": patient_id,
-                "name": pdata.get("name", patient_id.title()),
-                "passcode": pdata.get("passcode", ""),
-            }
-            for patient_id, pdata in patients.items()
-            if pdata.get("is_demo", True)
-        ],
-    }
+    profiles = []
+    for patient_id, pdata in patients.items():
+        if not pdata.get("is_demo", True):
+            continue
+        profile = {"id": patient_id, "name": pdata.get("name", patient_id.title())}
+        if EXPOSE_DEMO_PASSCODES:
+            profile["passcode"] = resolve_patient_passcode(patient_id, pdata.get("passcode")) or ""
+        profiles.append(profile)
+    notice = (
+        "Passcodes are configured via environment variables on the server."
+        if not EXPOSE_DEMO_PASSCODES
+        else "Demo profiles only. Do not use these passcodes in production."
+    )
+    return {"notice": notice, "profiles": profiles, "exposed": EXPOSE_DEMO_PASSCODES}
 
 
 @app.get("/api/patient/{patient_id}")
@@ -336,8 +360,10 @@ def verify_patient_passcode(patient_id: str, req: VerifyPasscodeRequest) -> dict
         patients = load_db().get("patients", {})
         patient_id_clean = patient_id.lower().strip()
         if patient_id_clean in patients:
-            actual_passcode = patients[patient_id_clean].get("passcode")
-            if req.passcode == actual_passcode:
+            expected = resolve_patient_passcode(
+                patient_id_clean, patients[patient_id_clean].get("passcode")
+            )
+            if expected and req.passcode == expected:
                 append_activity(
                     patient_id_clean,
                     "update",
@@ -550,7 +576,9 @@ def toggle_patient_type(
 
 @app.post("/api/reset")
 def reset_demo_data() -> dict:
-    seed = load_json(SEED_DB_PATH, {"patients": {}})
+    import copy
+
+    seed = apply_passcodes_from_env(copy.deepcopy(load_json(SEED_DB_PATH, {"patients": {}})))
     save_json(DB_PATH, seed)
     save_json(ACTIVITY_PATH, {"patients": {}})
     return {"success": True}

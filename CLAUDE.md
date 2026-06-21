@@ -2,13 +2,6 @@
 
 Kaggle **Agents for Good** capstone: ambient elderly wellness check-ins via Google ADK 2.0 multi-agent graph.
 
-## Live demo
-
-- **Patient UI**: https://example.com/wellness/
-- **Provider UI**: https://example.com/wellness/provider/
-- **Server**: `YOUR_DEPLOY_HOST`, PM2 app `wellness-companion`, cwd `/path/to/wellness-companion`
-- **Deploy**: `rsync app/ to your deployment host && restart your app process manager`
-
 ## Key files
 
 | Path | Role |
@@ -17,31 +10,29 @@ Kaggle **Agents for Good** capstone: ambient elderly wellness check-ins via Goog
 | `app/mcp_server.py` | MCP tools + `apply_wellness_metrics` (allowlist-validated JSON writes) |
 | `app/fast_api_app.py` | FastAPI routes: patient/provider APIs, CRUD, health, reset |
 | `app/aura_ui.py` | Patient, provider, and about HTML/CSS/JS (single file) |
-| `app/seed_db.json` | Canonical demo DB; `/api/reset` restores from this |
-| `app/mock_secure_db.json` | Runtime DB (git-tracked for demo reproducibility) |
+| `app/seed_db.json` | Canonical demo clinical data (no passcodes — set via env) |
+| `app/mock_secure_db.json` | Runtime DB |
+| `.env.example` | Template for passcodes and provider auth |
 
 ## Architecture notes
 
 - **Deterministic persistence**: `persist_metrics_node` calls `apply_wellness_metrics` directly — do not rely on LLM tool calls for JSON updates.
-- **Per-med updates**: Only keys in `medication_updates` change status. Empty dict + `medication_compliance: false` must NOT blanket-mark all meds missed.
+- **Per-med updates**: Explicit `medication_updates` keys change status. Empty updates + `medication_compliance: true` marks all meds `taken`. Empty updates + `false` leaves statuses unchanged.
 - **Tool isolation**: CompanionNode gets `get_medication_schedule` only; no DB write access.
 - **Subpath deploy**: Nav links in `aura_ui.py` use relative paths (`provider/`, `about/`, `..`). Routes redirect to trailing slashes (`/provider` → `/provider/`).
 - **Session UX**: Unlock buttons become **Log out** when patient/provider session is active.
-
-## Demo credentials
-
-| Role | Passcode |
-|------|----------|
-| Arthur | (env) |
-| Beatrice | (env) |
-| Charles | (env) |
-| Provider | (env) |
+- **Secrets**: Never commit passcodes, SSH hosts, or server paths. Configure via `.env` on each deployment.
 
 ## Prerequisites
 
 Install the CLI (one-time):
 ```bash
 uv tool install google-agents-cli
+```
+
+Copy and fill credentials locally:
+```bash
+cp .env.example .env
 ```
 
 ---
@@ -64,7 +55,7 @@ Run `uv run pytest tests/unit tests/integration`. Fix issues until all tests pas
 **Requires explicit human approval.** Run `agents-cli deploy` only after user confirms. See the **Deployment Guide** for details.
 
 ### Phase 6: Production Deployment
-GCP showcase uses PM2 + nginx subpath (`/wellness/`). See README deployment section.
+Configure environment variables on the host (see `.env.example`). Do not document hostnames, SSH aliases, or filesystem paths in this repo.
 
 ## Development Commands
 
@@ -96,3 +87,4 @@ GCP showcase uses PM2 + nginx subpath (`/wellness/`). See README deployment sect
 - **Run Python with `uv`**: `uv run python script.py`. Run `agents-cli install` first.
 - **Stop on repeated errors**: If the same error appears 3+ times, fix the root cause instead of retrying.
 - **Terraform conflicts** (Error 409): Use `terraform import` instead of retrying creation.
+- **Never commit secrets**: No passcodes, server hostnames, SSH config, or deployment paths in tracked files.

@@ -4,7 +4,6 @@
       "name": "Arthur Pendelton",
       "address": "1428 Elm Street",
       "phone": "555-0199",
-      ***REMOVED***
       "is_demo": true,
       "created_at": "2026-06-01T00:00:00+00:00",
       "updated_at": "2026-06-01T00:00:00+00:00",
@@ -32,7 +31,6 @@
       "name": "Beatrice Vance",
       "address": "742 Evergreen Terrace",
       "phone": "555-0143",
-      ***REMOVED***
       "is_demo": true,
       "created_at": "2026-06-01T00:00:00+00:00",
       "updated_at": "2026-06-01T00:00:00+00:00",
@@ -60,7 +58,6 @@
       "name": "Charles Darwin",
       "address": "Down House, Kent",
       "phone": "555-0182",
-      ***REMOVED***
       "is_demo": true,
       "created_at": "2026-06-01T00:00:00+00:00",
       "updated_at": "2026-06-01T00:00:00+00:00",
