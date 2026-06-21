@@ -1,6 +1,8 @@
-# Ambient Wellness Companion for Elderly Care (Agents for Good)
+# AURA: Ambient Wellness Companion for Elderly Care (Agents for Good)
 
 An ambient, privacy-first wellness companion designed for elderly care. This project utilizes the **Agent Development Kit (ADK 2.0)** framework to orchestrate a state-driven multi-agent system. It maintains an empathetic conversation loop with the user, fetches their medication schedules, anonymizes telemetry to strip out PII, and automatically escalates critical wellness drops or medication compliance failures.
+
+**Live demo:** [agreddy.com/wellness/](https://agreddy.com/wellness/) · **Portfolio write-up:** [agreddy.com/projects/wellness-companion](https://agreddy.com/projects/wellness-companion) · **Source:** [github.com/agopalareddy/wellness-companion](https://github.com/agopalareddy/wellness-companion)
 
 ---
 
@@ -138,3 +140,17 @@ agents-cli lint
 # Execute isolated state transition unit tests
 uv run pytest tests/unit
 ```
+
+---
+
+## 🌐 Deployment
+
+The patient dashboard static UI is served from the [personal-website](https://github.com/agopalareddy/personal-website) repo at `/wellness/`. The FastAPI agent backend runs as a separate process (port `8090` on the GCP showcase VM) and is reverse-proxied for ADK routes and `/api/patient/` endpoints.
+
+| Surface | URL |
+|---------|-----|
+| Patient dashboard | `https://agreddy.com/wellness/` |
+| ADK dev-ui playground | `https://agreddy.com/wellness/dev-ui/` |
+| Project page | `https://agreddy.com/projects/wellness-companion` |
+
+Passcodes and provider credentials are configured via `.env` on the server — never commit them. Set `EXPOSE_DEMO_PASSCODES=true` locally to surface passcodes in the UI helper during development.
