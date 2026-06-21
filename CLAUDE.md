@@ -6,7 +6,7 @@ Kaggle **Agents for Good** capstone: ambient elderly wellness check-ins via Goog
 
 | Path | Role |
 |------|------|
-| `app/graph.py` | ADK workflow: CompanionNode → persist_metrics_node → EscalationNode |
+| `app/graph.py` | ADK workflow: MedicationExtractorNode → CompanionNode → persist_metrics_node → EscalationNode |
 | `app/mcp_server.py` | MCP tools + `apply_wellness_metrics` (allowlist-validated JSON writes) |
 | `app/fast_api_app.py` | FastAPI routes: patient/provider APIs, CRUD, health, reset |
 | `app/aura_ui.py` | Patient, provider, and about HTML/CSS/JS (single file) |
@@ -18,7 +18,7 @@ Kaggle **Agents for Good** capstone: ambient elderly wellness check-ins via Goog
 
 - **Deterministic persistence**: `persist_metrics_node` calls `apply_wellness_metrics` directly — do not rely on LLM tool calls for JSON updates.
 - **Per-med updates**: Explicit `medication_updates` keys change status. Empty updates + `medication_compliance: true` marks all meds `taken`. Empty updates + `false` leaves statuses unchanged.
-- **Tool isolation**: CompanionNode gets `get_medication_schedule` only; no DB write access.
+- **Medication extraction**: Dedicated `MedicationExtractorNode` maps patient language to schedule ids; schedule is injected in `log_input_node`.
 - **Subpath deploy**: Nav links in `aura_ui.py` use relative paths (`provider/`, `about/`, `..`). Routes redirect to trailing slashes (`/provider` → `/provider/`).
 - **Session UX**: Unlock buttons become **Log out** when patient/provider session is active.
 - **Secrets**: Never commit passcodes, SSH hosts, or server paths. Configure via `.env` on each deployment.

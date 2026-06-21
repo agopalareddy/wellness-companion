@@ -12,6 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+from typing import Literal
+
+import google.auth
+from google import genai
 from google.adk.agents import LlmAgent
 from google.adk.agents.context import Context
 from google.adk.events.event import Event, EventActions
@@ -20,8 +25,21 @@ from google.adk.workflow import START, Edge, Workflow, node
 from google.genai import types
 from pydantic import BaseModel, Field
 
-from .mcp_server import apply_wellness_metrics
-from .tools import companion_toolset
+from .mcp_server import apply_wellness_metrics, load_db
+
+_EXTRACTOR_MODEL = "gemini-2.5-flash"
+_EXTRACTOR_INSTRUCTION = """You extract medication compliance from elderly patient check-in messages.
+
+The input contains the patient check-in and medication schedule with id= keys.
+Map the patient's natural language to those exact ids (e.g. "enzyme capsule" → digestive_enzyme).
+
+When the patient mentions specific meds, medication_updates MUST list every affected id with taken, missed, or pending.
+Never return an empty medication_updates when specific meds were discussed.
+
+Example:
+Patient check-in: I missed my enzyme capsule but took my supplement.
+→ {"digestive_enzyme": "missed", "vitamin_d": "taken"}, medication_compliance: false
+"""
 
 
 class WellnessState(BaseModel):
@@ -33,25 +51,39 @@ class WellnessState(BaseModel):
     medication_compliance_flag: bool = True
     consecutive_missed_cycles: int = 0
     escalation_triggered: bool = False
+    medication_extraction: dict = Field(default_factory=dict)
+    check_in_context: str = ""
     companion_data: dict = Field(default_factory=dict)
     anonymized_data: dict = Field(default_factory=dict)
 
 
+class MedicationExtraction(BaseModel):
+    """Structured medication status extracted from the patient check-in."""
+
+    medication_updates: dict[str, Literal["taken", "missed", "pending"]] = Field(
+        description=(
+            "Per-medication status mapped from the patient's words to exact schedule ids "
+            "(e.g. digestive_enzyme, vitamin_d). Include every med the patient mentioned. "
+            "Leave empty only when the patient did not discuss any medication."
+        ),
+        default_factory=dict,
+    )
+    medication_compliance: bool = Field(
+        description=(
+            "False when any scheduled medication was missed; true when all were taken "
+            "or the patient did not mention medications."
+        )
+    )
+
+
 class CompanionOutput(BaseModel):
-    """Output schema for CompanionNode containing LLM evaluation."""
+    """Output schema for CompanionNode — mood and empathetic reply only."""
 
     companion_response: str = Field(
         description="The empathetic verbal response or check-in prompt for the patient."
     )
-    medication_compliance: bool = Field(
-        description="Calculated overall medication compliance from the patient check-in."
-    )
     mood_score: int = Field(
         description="Patient mood score on a scale of 1 (depressed) to 10 (happy)."
-    )
-    medication_updates: dict[str, str] = Field(
-        description="Updates for the statuses of the patient's individual medications based on the conversation. Keys must be medication IDs like 'cardiovascular', 'multivitamin', 'sleep_aid', 'insulin', 'blood_pressure', 'digestive_enzyme', or 'vitamin_d'. Values must be 'taken', 'missed', or 'pending'. If a medication was not mentioned, do not include it or set it to 'pending'.",
-        default_factory=dict
     )
 
 
@@ -68,6 +100,75 @@ class AnonymizedMetrics(BaseModel):
     )
 
 
+def _format_check_in_context(patient_id: str, user_text: str) -> str:
+    """Build the full check-in payload downstream LLM nodes can read."""
+    lines = [f"Patient check-in: {user_text}", "", "Medication schedule (use id= keys in medication_updates):"]
+    try:
+        patient_record = load_db().get("patients", {}).get(patient_id.lower(), {})
+        meds = patient_record.get("medications", {})
+        for med_id, med_info in meds.items():
+            lines.append(
+                f"- id={med_id} | {med_info.get('name')} | {med_info.get('time')} | "
+                f"status={med_info.get('status', 'pending')}"
+            )
+        if not meds:
+            lines.append("- (no medications on file)")
+    except Exception:
+        lines.append("- (schedule unavailable)")
+    return "\n".join(lines)
+
+
+def _genai_client() -> genai.Client:
+    _, project_id = google.auth.default()
+    return genai.Client(
+        vertexai=True,
+        project=project_id,
+        location=os.environ.get("GOOGLE_CLOUD_LOCATION", "global"),
+    )
+
+
+def _extract_medications_with_llm(check_in_context: str) -> MedicationExtraction:
+    """LLM extraction via response_schema (gemini-3.5-flash omits dict fields too often)."""
+    config = types.GenerateContentConfig(
+        response_mime_type="application/json",
+        response_schema=MedicationExtraction,
+        temperature=0,
+        system_instruction=_EXTRACTOR_INSTRUCTION,
+    )
+    client = _genai_client()
+    extraction = MedicationExtraction(medication_compliance=True)
+    for attempt in range(2):
+        suffix = ""
+        if attempt:
+            suffix = (
+                "\n\nYour prior response omitted medication_updates. "
+                "Return every affected schedule id with taken or missed."
+            )
+        response = client.models.generate_content(
+            model=_EXTRACTOR_MODEL,
+            contents=check_in_context + suffix,
+            config=config,
+        )
+        extraction = MedicationExtraction.model_validate_json(response.text or "{}")
+        if extraction.medication_updates:
+            return extraction
+        if extraction.medication_compliance:
+            return extraction
+    return extraction
+
+
+@node
+def extract_medications_node(ctx: Context, node_input: str) -> Event:
+    """Focused LLM call: map patient wording to schedule ids."""
+    check_in_context = (node_input or "").strip() or ctx.state.get("check_in_context", "")
+    extraction = _extract_medications_with_llm(check_in_context)
+    payload = extraction.model_dump()
+    return Event(
+        output=extraction,
+        actions=EventActions(state_delta={"medication_extraction": payload}),
+    )
+
+
 @node
 def log_input_node(ctx: Context, node_input: types.Content) -> Event:
     """Pre-processing node: logs the user prompt to conversational history state."""
@@ -81,33 +182,27 @@ def log_input_node(ctx: Context, node_input: types.Content) -> Event:
     history = ctx.state.get("conversational_history", [])
 
     if not history:
-        import json
-        import os
-        db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "mock_secure_db.json"))
-        patient_name = "Arthur Pendelton"
-        if os.path.exists(db_path):
-            try:
-                with open(db_path) as f:
-                    db = json.load(f)
-                    patient_name = db.get("patients", {}).get(patient_id, {}).get("name", "Arthur Pendelton")
-            except Exception:
-                pass
         history.append(
-            f"System: You are conversing with patient {patient_name} (ID: {patient_id}). "
-            f"Always call get_medication_schedule with patient_id='{patient_id}'."
+            f"System: You are conversing with patient ID {patient_id}. "
+            "Medication schedule lines below use id= keys for structured extraction."
         )
 
+    check_in_context = _format_check_in_context(patient_id, user_text)
     history.append(f"User: {user_text}")
 
     return Event(
-        output=user_text,
+        output=check_in_context,
         actions=EventActions(
             state_delta={
                 "conversational_history": history,
-                "patient_id": patient_id
+                "patient_id": patient_id,
+                "check_in_context": check_in_context,
             },
         ),
     )
+
+
+medication_extractor_node = extract_medications_node
 
 
 companion_node = LlmAgent(
@@ -116,37 +211,60 @@ companion_node = LlmAgent(
         model="gemini-3.5-flash",
         retry_options=types.HttpRetryOptions(attempts=3),
     ),
-    instruction="""You are an empathetic, ambient, privacy-first wellness companion for elderly care.
-Your primary tasks:
-1. Converse empathetically with the patient.
-2. Read the patient_id from the conversation history/state (e.g. 'arthur', 'beatrice', or 'charles').
-3. Call the `get_medication_schedule` tool with that patient_id to retrieve the active medication routine.
-4. Determine overall medication compliance, mood score, and individual medication status updates ('taken', 'missed', or 'pending') based on the patient's check-in.
-5. Populate `medication_updates` with the status of each medication the patient mentioned. Keys must be medication IDs from the schedule (e.g. `digestive_enzyme`, `vitamin_d`, `insulin`). Values must be `taken`, `missed`, or `pending`. When the patient confirms all medications were taken, list every scheduled med ID as `taken`. When only some were taken or missed, include only those discussed — do not mark unmentioned meds from overall compliance alone.
-6. Output the structured companion response, overall compliance, mood score, and medication updates.
+    instruction="""You are an empathetic, privacy-first wellness companion for elderly care.
 
-Security constraint: You have NO access to database logging tools. Telemetry is persisted by a separate deterministic privacy guard node.
+Check-in context:
+{check_in_context}
+
+Medication extraction (already recorded for the chart):
+{medication_extraction}
+
+Write a warm companion_response that acknowledges what the patient said, including specific medications when they discussed them.
+Assess mood_score from 1 (very low) to 10 (excellent) based on tone and words.
+
+Security: You have NO database logging tools. Telemetry is persisted by a separate node.
 """,
-    tools=[companion_toolset],
     output_schema=CompanionOutput,
     output_key="companion_data",
 )
+
+
+def _coerce_extraction(raw: object) -> dict:
+    if hasattr(raw, "model_dump"):
+        return raw.model_dump()
+    if isinstance(raw, dict):
+        return raw
+    return {}
 
 
 @node
 def persist_metrics_node(ctx: Context, node_input: CompanionOutput) -> Event:
     """Deterministic privacy guard: allowlist-validated metrics write to patient JSON."""
     patient_id = ctx.state.get("patient_id", "arthur")
+    extraction = _coerce_extraction(ctx.state.get("medication_extraction"))
+    medication_updates = dict(extraction.get("medication_updates") or {})
+    medication_compliance = extraction.get("medication_compliance", True)
+
     metrics = {
         "mood_score": node_input.mood_score,
-        "medication_compliance": node_input.medication_compliance,
-        "medication_updates": dict(node_input.medication_updates or {}),
+        "medication_compliance": medication_compliance,
+        "medication_updates": medication_updates,
     }
-    result_msg = apply_wellness_metrics(patient_id, metrics)
+    apply_wellness_metrics(patient_id, metrics)
     anonymized = AnonymizedMetrics(**metrics)
+    companion_data = {
+        **node_input.model_dump(),
+        "medication_compliance": medication_compliance,
+        "medication_updates": medication_updates,
+    }
     return Event(
         output=anonymized,
-        actions=EventActions(state_delta={"anonymized_data": metrics}),
+        actions=EventActions(
+            state_delta={
+                "anonymized_data": metrics,
+                "companion_data": companion_data,
+            }
+        ),
     )
 
 
@@ -227,7 +345,8 @@ wellness_graph = Workflow(
     state_schema=WellnessState,
     edges=[
         Edge(from_node=START, to_node=log_input_node),
-        Edge(from_node=log_input_node, to_node=companion_node),
+        Edge(from_node=log_input_node, to_node=medication_extractor_node),
+        Edge(from_node=medication_extractor_node, to_node=companion_node),
         Edge(from_node=companion_node, to_node=persist_metrics_node),
         Edge(from_node=persist_metrics_node, to_node=escalation_node),
         Edge(from_node=escalation_node, to_node=alert_node, route="escalate"),

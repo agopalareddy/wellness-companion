@@ -11,8 +11,9 @@ The companion is built as a state-driven graph containing three distinct, isolat
 ```mermaid
 graph TD
     START[START: User Input Message] --> log_input_node[log_input_node: Pre-processor]
-    log_input_node --> CompanionNode[CompanionNode: Empathetic LLM Agent]
-    CompanionNode -- "Yields CompanionOutput (mood, compliance)" --> persist_metrics_node[persist_metrics_node: Deterministic Privacy Guard]
+    log_input_node --> MedicationExtractorNode[MedicationExtractorNode: Med status LLM]
+    MedicationExtractorNode --> CompanionNode[CompanionNode: Empathetic LLM Agent]
+    CompanionNode -- "Yields CompanionOutput (mood, reply)" --> persist_metrics_node[persist_metrics_node: Deterministic Privacy Guard]
     persist_metrics_node -- "Yields AnonymizedMetrics" --> EscalationNode[EscalationNode: Python Rule Engine]
     
     EscalationNode -- "Missed Cycles >= 2 OR Mood Score < 3" --> alert_node[alert_node: Critical Escalation]
@@ -29,8 +30,9 @@ When deployed under a URL subpath, nav links use relative paths and `/provider`/
 Session controls: header buttons show **Unlock profile** / **Provider unlock** when logged out and **Log out** when a session is active.
 
 ### 1. Nodes & Execution Logic
-*   **log_input_node**: A pre-processing Python node that intercepts incoming messages, formats them, and records the raw user prompt into the session's conversational history state.
-*   **CompanionNode (Empathetic Agent)**: A Gemini 3.5 Flash agent that conducts natural language check-ins, checks on the patient's mood and wellness, and pulls daily medication routines.
+*   **log_input_node**: Pre-processor that records the user message and injects the current medication schedule (with ids) into conversational history.
+*   **MedicationExtractorNode**: A focused Gemini agent that maps patient wording to exact medication ids and outputs `medication_updates` + `medication_compliance`.
+*   **CompanionNode (Empathetic Agent)**: Generates mood score and a warm natural-language reply. Medication status is handled by the extractor, not duplicated here.
 *   **persist_metrics_node (Privacy Guard)**: A deterministic Python node that applies a server-side allowlist (`validate_metrics`) and writes mood/compliance/medication status to `mock_secure_db.json`. No LLM tool call is required, so the patient JSON panel always updates after a check-in.
 *   **EscalationNode (State Evaluator)**: A Python rule engine that updates the compliance metrics (e.g. consecutive missed cycles) and performs conditional routing to trigger emergency alerts.
 
@@ -42,8 +44,8 @@ To guarantee patient privacy, we enforce a strict **least-privilege security mod
 
 1.  **Tool Separation**: The local MCP server (`app/mcp_server.py`) exposes `get_medication_schedule` and `log_wellness_metrics`.
 2.  **Explicit Boundaries**:
-    *   **CompanionNode** is provided only with `companion_toolset` (which filters and exposes *only* the `get_medication_schedule` tool). It has **no access** to the database tool.
-    *   **persist_metrics_node** calls `apply_wellness_metrics` directly with an allowlist guard — only `mood_score`, `medication_compliance`, and `medication_updates` may be stored.
+    *   **MedicationExtractorNode** and **CompanionNode** have no database write tools. The schedule is injected in `log_input_node`.
+    *   **persist_metrics_node** merges extractor output with companion mood and calls `apply_wellness_metrics` with an allowlist guard — only `mood_score`, `medication_compliance`, and `medication_updates` may be stored.
 3.  **Strict Routing**: The companion agent cannot write to the secure mock database file. Telemetry persistence happens only in the deterministic privacy guard node after structured companion output is available.
 4.  **Credentials**: Patient and provider passcodes are **not** stored in git. Configure them via environment variables (see `.env.example`). The demo passcode API is hidden unless `EXPOSE_DEMO_PASSCODES=true`.
 

@@ -89,7 +89,8 @@ AURA_ABOUT_HTML = """<!doctype html>
         <span>Companion (LLM)</span> &rarr; <span>Privacy Guard (deterministic)</span> &rarr; <span>Escalation (rules)</span> &rarr; <span>alert / normal</span>
       </div>
       <ul>
-        <li><strong>CompanionNode</strong> — empathetic Gemini agent. Can read the medication schedule, but has no tool that can write to the database.</li>
+        <li><strong>MedicationExtractorNode</strong> — maps patient wording to per-med ids from the injected schedule.</li>
+        <li><strong>CompanionNode</strong> — empathetic Gemini agent for mood and reply; no database write access.</li>
         <li><strong>Privacy Guard</strong> — deterministic Python node with server-side allowlist validation; the only step that writes wellness metrics to patient JSON.</li>
         <li><strong>EscalationNode</strong> — deterministic Python, not an LLM call, for the highest-stakes decision: whether to alert a caregiver.</li>
       </ul>

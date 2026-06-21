@@ -19,7 +19,10 @@ import tempfile
 from app.graph import (
     AnonymizedMetrics,
     CompanionOutput,
+    MedicationExtraction,
+    _format_check_in_context,
     escalation_node,
+    extract_medications_node,
     persist_metrics_node,
 )
 from app.mcp_server import (
@@ -133,6 +136,97 @@ def test_validate_metrics_rejects_free_text_med_status() -> None:
         pass
 
 
+def test_extract_medications_node_stores_extraction(monkeypatch) -> None:
+    expected = MedicationExtraction(
+        medication_compliance=False,
+        medication_updates={"digestive_enzyme": "missed", "vitamin_d": "taken"},
+    )
+
+    def fake_extract(_: str) -> MedicationExtraction:
+        return expected
+
+    import app.graph as graph_module
+
+    monkeypatch.setattr(graph_module, "_extract_medications_with_llm", fake_extract)
+    ctx = MockContext({"patient_id": "charles"})
+    event = extract_medications_node._func(ctx, "Patient check-in: example")
+
+    assert event.actions.state_delta["medication_extraction"] == expected.model_dump()
+
+
+def test_format_check_in_context_includes_med_ids(monkeypatch) -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_file = os.path.join(tmpdir, "mock_secure_db.json")
+        seed = {
+            "patients": {
+                "charles": {
+                    "name": "Charles Darwin",
+                    "medications": {
+                        "digestive_enzyme": {
+                            "name": "Digestive Enzyme Capsule",
+                            "time": "Morning",
+                            "status": "pending",
+                        },
+                        "vitamin_d": {
+                            "name": "Vitamin D3 Supplement",
+                            "time": "Noon",
+                            "status": "pending",
+                        },
+                    },
+                }
+            }
+        }
+        with open(db_file, "w") as f:
+            json.dump(seed, f)
+
+        import app.mcp_server as mcp_server
+
+        monkeypatch.setattr(mcp_server, "DB_PATH", db_file)
+        context = _format_check_in_context(
+            "charles",
+            "I missed my enzyme capsule but took my supplement.",
+        )
+
+    assert "Patient check-in: I missed my enzyme capsule but took my supplement." in context
+    assert "id=digestive_enzyme" in context
+    assert "id=vitamin_d" in context
+
+
+def test_get_medication_schedule_includes_med_ids(monkeypatch) -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_file = os.path.join(tmpdir, "mock_secure_db.json")
+        seed = {
+            "patients": {
+                "charles": {
+                    "name": "Charles Darwin",
+                    "medications": {
+                        "digestive_enzyme": {
+                            "name": "Digestive Enzyme Capsule",
+                            "time": "Morning",
+                            "status": "pending",
+                        },
+                        "vitamin_d": {
+                            "name": "Vitamin D3 Supplement",
+                            "time": "Noon",
+                            "status": "pending",
+                        },
+                    },
+                }
+            }
+        }
+        with open(db_file, "w") as f:
+            json.dump(seed, f)
+
+        import app.mcp_server as mcp_server
+
+        monkeypatch.setattr(mcp_server, "DB_PATH", db_file)
+        schedule = mcp_server.get_medication_schedule("charles")
+
+    assert "id=digestive_enzyme" in schedule
+    assert "id=vitamin_d" in schedule
+    assert "medication_updates" in schedule
+
+
 def test_subject_hash_is_stable_and_not_reversible_lookalike() -> None:
     h1 = subject_hash("arthur")
     h2 = subject_hash("arthur")
@@ -168,12 +262,16 @@ def test_persist_metrics_node_writes_patient_json(monkeypatch) -> None:
 
         monkeypatch.setattr(mcp_server, "DB_PATH", db_file)
 
-        ctx = MockContext({"patient_id": "beatrice"})
+        ctx = MockContext({
+            "patient_id": "beatrice",
+            "medication_extraction": {
+                "medication_compliance": True,
+                "medication_updates": {"insulin": "taken"},
+            },
+        })
         companion = CompanionOutput(
             companion_response="Great job today!",
-            medication_compliance=True,
             mood_score=8,
-            medication_updates={"insulin": "taken"},
         )
         event = persist_metrics_node._func(ctx, companion)
 
@@ -293,5 +391,64 @@ def test_apply_wellness_metrics_partial_updates_only(monkeypatch) -> None:
         with open(db_file) as f:
             partial_db = json.load(f)
         meds = partial_db["patients"]["charles"]["medications"]
+        assert meds["digestive_enzyme"]["status"] == "missed"
+        assert meds["vitamin_d"]["status"] == "taken"
+
+
+def test_persist_metrics_node_uses_medication_extraction_state(monkeypatch) -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_file = os.path.join(tmpdir, "mock_secure_db.json")
+        seed = {
+            "patients": {
+                "charles": {
+                    "name": "Charles Darwin",
+                    "medications": {
+                        "digestive_enzyme": {
+                            "name": "Digestive Enzyme Capsule",
+                            "time": "Morning",
+                            "status": "pending",
+                        },
+                        "vitamin_d": {
+                            "name": "Vitamin D3 Supplement",
+                            "time": "Noon",
+                            "status": "pending",
+                        },
+                    },
+                    "mood_history": [],
+                    "compliance_history": [],
+                }
+            }
+        }
+        with open(db_file, "w") as f:
+            json.dump(seed, f)
+
+        import app.mcp_server as mcp_server
+
+        monkeypatch.setattr(mcp_server, "DB_PATH", db_file)
+
+        ctx = MockContext({
+            "patient_id": "charles",
+            "medication_extraction": {
+                "medication_compliance": False,
+                "medication_updates": {
+                    "digestive_enzyme": "missed",
+                    "vitamin_d": "taken",
+                },
+            },
+        })
+        companion = CompanionOutput(
+            companion_response="Thanks for letting me know.",
+            mood_score=6,
+        )
+        event = persist_metrics_node._func(ctx, companion)
+
+        assert event.actions.state_delta["companion_data"]["medication_updates"] == {
+            "digestive_enzyme": "missed",
+            "vitamin_d": "taken",
+        }
+
+        with open(db_file) as f:
+            db = json.load(f)
+        meds = db["patients"]["charles"]["medications"]
         assert meds["digestive_enzyme"]["status"] == "missed"
         assert meds["vitamin_d"]["status"] == "taken"

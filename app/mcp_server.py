@@ -207,10 +207,19 @@ def get_medication_schedule(patient_id: str) -> str:
     meds = patient.get("medications", {})
 
     schedule_lines = [f"Daily Medication Schedule for {patient.get('name')}:"]
-    for _med_id, med_info in meds.items():
-        schedule_lines.append(f"- {med_info.get('time')}: {med_info.get('name')}")
-    schedule_lines.append(
-        "Please verify if the patient has complied with their medication schedule."
+    for med_id, med_info in meds.items():
+        schedule_lines.append(
+            f"- id={med_id} | {med_info.get('time')}: {med_info.get('name')} "
+            f"(status: {med_info.get('status', 'pending')})"
+        )
+    schedule_lines.extend(
+        [
+            "Use the exact id= values as keys in medication_updates.",
+            "Interpret the patient's words freely (nicknames, partial names, 'my morning pill') "
+            "but always map them to those ids in your structured output.",
+            "If the patient mentions taking or missing specific medications, medication_updates "
+            "must include every affected id — never describe changes only in companion_response.",
+        ]
     )
 
     return "\n".join(schedule_lines)

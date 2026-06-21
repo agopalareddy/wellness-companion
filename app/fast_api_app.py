@@ -57,7 +57,7 @@ allow_origins = (
 
 logs_bucket_name = os.environ.get("LOGS_BUCKET_NAME")
 
-AGENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+AGENT_DIR = str(Path(__file__).resolve().parent)
 
 if os.getenv("INTEGRATION_TEST") == "TRUE":
     session_service_uri = None
