@@ -4,30 +4,68 @@
       "name": "Arthur Pendelton",
       "address": "1428 Elm Street",
       "phone": "555-0199",
+      ***REMOVED***
       "medications": {
         "cardiovascular": {
           "name": "Cardiovascular Support (1 tablet)",
           "time": "Morning (08:00 AM)",
-          "status": "pending"
+          "status": "missed"
         },
         "multivitamin": {
           "name": "Daily Multivitamin (1 tablet)",
           "time": "Noon (12:00 PM)",
-          "status": "pending"
+          "status": "missed"
         },
         "sleep_aid": {
           "name": "Gentle Sleep Aid (1 tablet)",
           "time": "Night (09:00 PM)",
-          "status": "pending"
+          "status": "missed"
         }
       },
-      "mood_history": [5, 6, 5],
-      "compliance_history": [true, true, true]
+      "mood_history": [
+        5,
+        6,
+        5,
+        7,
+        7,
+        7,
+        7,
+        7,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        7,
+        7,
+        7
+      ],
+      "compliance_history": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
     },
     "beatrice": {
       "name": "Beatrice Vance",
       "address": "742 Evergreen Terrace",
       "phone": "555-0143",
+      ***REMOVED***
       "medications": {
         "insulin": {
           "name": "Insulin injection",
@@ -45,13 +83,22 @@
           "status": "pending"
         }
       },
-      "mood_history": [7, 8, 7],
-      "compliance_history": [true, true, true]
+      "mood_history": [
+        7,
+        8,
+        7
+      ],
+      "compliance_history": [
+        true,
+        true,
+        true
+      ]
     },
     "charles": {
       "name": "Charles Darwin",
       "address": "Down House, Kent",
       "phone": "555-0182",
+      ***REMOVED***
       "medications": {
         "digestive_enzyme": {
           "name": "Digestive Enzyme Capsule",
@@ -64,8 +111,16 @@
           "status": "pending"
         }
       },
-      "mood_history": [6, 6, 7],
-      "compliance_history": [true, true, true]
+      "mood_history": [
+        6,
+        6,
+        7
+      ],
+      "compliance_history": [
+        true,
+        true,
+        true
+      ]
     }
   }
 }

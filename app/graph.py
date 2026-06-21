@@ -45,10 +45,14 @@ class CompanionOutput(BaseModel):
         description="The empathetic verbal response or check-in prompt for the patient."
     )
     medication_compliance: bool = Field(
-        description="Calculated medication compliance from the patient check-in."
+        description="Calculated overall medication compliance from the patient check-in."
     )
     mood_score: int = Field(
         description="Patient mood score on a scale of 1 (depressed) to 10 (happy)."
+    )
+    medication_updates: dict[str, str] = Field(
+        description="Updates for the statuses of the patient's individual medications based on the conversation. Keys must be medication IDs like 'cardiovascular', 'multivitamin', 'sleep_aid', 'insulin', 'blood_pressure', 'digestive_enzyme', or 'vitamin_d'. Values must be 'taken', 'missed', or 'pending'. If a medication was not mentioned, do not include it or set it to 'pending'.",
+        default_factory=dict
     )
 
 
@@ -58,6 +62,10 @@ class AnonymizedMetrics(BaseModel):
     mood_score: int = Field(description="Anonymized mood score of the patient.")
     medication_compliance: bool = Field(
         description="Anonymized medication compliance flag."
+    )
+    medication_updates: dict[str, str] = Field(
+        description="Anonymized medication updates mapping.",
+        default_factory=dict
     )
 
 
@@ -117,8 +125,9 @@ Your primary tasks:
 1. Converse empathetically with the patient.
 2. Read the patient_id from the conversation history/state (e.g. 'arthur', 'beatrice', or 'charles').
 3. Call the `get_medication_schedule` tool with that patient_id to retrieve the active medication routine.
-4. Determine medication compliance and mood score based on the patient's check-in.
-5. Output the structured companion response, compliance, and mood score.
+4. Determine overall medication compliance, mood score, and individual medication status updates ('taken', 'missed', or 'pending') based on the patient's check-in.
+5. Populate the `medication_updates` dictionary with updates for any medications discussed (keys are medication IDs like 'cardiovascular', 'multivitamin', etc.).
+6. Output the structured companion response, overall compliance, mood score, and medication updates.
 
 Security constraint: You have NO access to database logging tools. You must rely on the next node for telemetry logging.
 """,
@@ -136,9 +145,9 @@ anonymizer_node = LlmAgent(
     instruction="""You are a telemetry anonymization agent.
 You will receive the structured wellness data from the CompanionNode.
 Your tasks:
-1. Parse the mood score and medication compliance fields.
+1. Parse the mood score, overall medication compliance, and medication updates fields.
 2. Completely strip out any PII, text chat logs, or conversational content.
-3. Call the `log_wellness_metrics` tool to store the anonymized metrics. You MUST retrieve the patient_id from the state/history and pass it: log_wellness_metrics(patient_id=patient_id, metrics={"mood_score": mood_score, "medication_compliance": compliance}).
+3. Call the `log_wellness_metrics` tool to store the anonymized metrics. You MUST retrieve the patient_id from the state/history and pass it: log_wellness_metrics(patient_id=patient_id, metrics={"mood_score": mood_score, "medication_compliance": compliance, "medication_updates": medication_updates}).
 4. Output the structured anonymized metrics.
 """,
     tools=[anonymizer_toolset],

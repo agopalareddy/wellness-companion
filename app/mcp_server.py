@@ -73,7 +73,8 @@ def log_wellness_metrics(patient_id: str, metrics: dict) -> str:
     Args:
         patient_id: The ID of the patient.
         metrics: A dictionary containing metrics. It must NOT contain PII or chat text.
-                 Format: {"mood_score": int, "medication_compliance": bool}
+                 Format: {"mood_score": int, "medication_compliance": bool, "medication_updates": dict}
+                 Where medication_updates is optional, mapping medication IDs to status ('taken', 'missed', 'pending').
     """
     db = load_db()
     patient_id = patient_id.lower().strip()
@@ -94,10 +95,18 @@ def log_wellness_metrics(patient_id: str, metrics: dict) -> str:
         patient["compliance_history"] = []
     patient["compliance_history"].append(compliance)
 
-    # Update current medications status based on compliance
+    # Update current medications status based on specific updates, or fallback to compliance
     meds = patient.get("medications", {})
-    for med_id, med_info in meds.items():
-        med_info["status"] = "taken" if compliance else "missed"
+    medication_updates = metrics.get("medication_updates")
+    if isinstance(medication_updates, dict) and medication_updates:
+        for med_id, status in medication_updates.items():
+            med_id_clean = med_id.lower().strip()
+            if med_id_clean in meds:
+                meds[med_id_clean]["status"] = status
+    else:
+        # Fallback to updating all medications to the compliance status
+        for med_id, med_info in meds.items():
+            med_info["status"] = "taken" if compliance else "missed"
 
     save_db(db)
     return f"Successfully logged metrics for {patient.get('name')}: {json.dumps(metrics)}"
