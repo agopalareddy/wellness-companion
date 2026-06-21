@@ -19,14 +19,27 @@ AURA_ABOUT_HTML = """<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>About AURA | Ambient Wellness Companion</title>
   <style>
-    :root { color-scheme: light; }
+    :root {
+      color-scheme: light;
+      --bg: #eef3f8;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #607086;
+      --line: #d9e2ec;
+      --blue: #246bfe;
+      --teal: #0f8b8d;
+      --green: #227950;
+      --amber: #996a00;
+      --red: #bf2f39;
+    }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      background: #eef3f8;
-      color: #17202a;
+      background: var(--bg);
+      color: var(--ink);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
+    h1, h2, h3, p, ul { margin: 0; }
     header {
       display: flex;
       align-items: center;
@@ -37,28 +50,177 @@ AURA_ABOUT_HTML = """<!doctype html>
       color: white;
       border-bottom: 1px solid #25344a;
     }
-    header a { color: #cfe0ff; text-decoration: none; font-weight: 600; }
+    header a {
+      color: #cfe0ff;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: .92rem;
+    }
     header a:hover { text-decoration: underline; }
     .brand { display: flex; align-items: center; gap: .75rem; }
     .brand-mark {
-      display: grid; place-items: center; width: 2.35rem; height: 2.35rem;
-      border-radius: 6px; background: linear-gradient(135deg, #246bfe, #0f8b8d); font-weight: 800;
+      display: grid;
+      place-items: center;
+      width: 2.35rem;
+      height: 2.35rem;
+      border-radius: 6px;
+      background: linear-gradient(135deg, var(--blue), var(--teal));
+      font-weight: 800;
     }
-    main { max-width: 760px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
-    h1 { font-size: 1.6rem; margin: 1.5rem 0 .5rem; }
-    h2 { font-size: 1.15rem; margin: 1.75rem 0 .5rem; color: #084275; }
-    p, li { line-height: 1.55; color: #324154; }
-    .muted { color: #607086; }
+    .header-nav {
+      display: flex;
+      align-items: center;
+      gap: .65rem;
+      flex-wrap: wrap;
+    }
+    .header-nav a:not(:first-child) {
+      padding: .35rem .65rem;
+      border: 1px solid #40526d;
+      border-radius: 6px;
+    }
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 1.25rem 1.25rem 2.5rem;
+    }
+    .page-intro {
+      margin-bottom: 1rem;
+    }
+    .page-intro h1 {
+      font-size: 1.55rem;
+      line-height: 1.25;
+      margin-bottom: .45rem;
+    }
+    .page-intro p {
+      line-height: 1.5;
+      color: var(--muted);
+      font-size: .98rem;
+    }
     section {
-      background: #ffffff; border: 1px solid #d9e2ec; border-radius: 8px;
-      padding: 1.25rem 1.5rem; margin-bottom: 1rem; box-shadow: 0 1px 2px rgb(32 44 64 / 5%);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 1rem 1.15rem 1.1rem;
+      margin-bottom: .85rem;
+      box-shadow: 0 1px 2px rgb(32 44 64 / 5%);
     }
-    code { background: #f1f5fa; padding: .1rem .35rem; border-radius: 4px; font-size: .9em; }
-    .pipeline {
-      display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
-      font-size: .9rem; font-weight: 600; color: #084275; margin: .5rem 0 0;
+    section h2 {
+      font-size: 1.05rem;
+      line-height: 1.3;
+      color: #084275;
+      margin-bottom: .55rem;
     }
-    .pipeline span { background: #eaf1ff; border-radius: 999px; padding: .35rem .8rem; }
+    section p, section li {
+      line-height: 1.55;
+      color: #324154;
+      font-size: .96rem;
+    }
+    section p + p,
+    section p + ul,
+    section ul + p,
+    section .flow + ul {
+      margin-top: .75rem;
+    }
+    section ul {
+      padding-left: 1.15rem;
+    }
+    section li + li { margin-top: .35rem; }
+    code {
+      background: #f1f5fa;
+      padding: .1rem .35rem;
+      border-radius: 4px;
+      font-size: .88em;
+    }
+    .flow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .35rem .25rem;
+      align-items: center;
+      margin-top: .15rem;
+    }
+    .flow-step {
+      display: inline-flex;
+      align-items: center;
+      gap: .25rem;
+      font-size: .78rem;
+      font-weight: 600;
+      border-radius: 999px;
+      padding: .32rem .65rem;
+      line-height: 1.2;
+    }
+    .flow-step.llm {
+      background: #eaf1ff;
+      color: #084275;
+    }
+    .flow-step.det {
+      background: #e6f6f0;
+      color: var(--green);
+    }
+    .flow-step.route {
+      background: #fff4d6;
+      color: var(--amber);
+    }
+    .flow-arrow {
+      color: #8a9bb0;
+      font-size: .85rem;
+      font-weight: 700;
+      user-select: none;
+    }
+    .node-grid {
+      display: grid;
+      gap: .55rem;
+      margin-top: .75rem;
+    }
+    .node-card {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: .65rem .75rem;
+      background: #f9fbfd;
+    }
+    .node-card h3 {
+      font-size: .88rem;
+      color: #084275;
+      margin-bottom: .2rem;
+    }
+    .node-card p {
+      font-size: .9rem;
+      color: #46566b;
+    }
+    .node-tag {
+      display: inline-block;
+      font-size: .68rem;
+      font-weight: 700;
+      letter-spacing: .02em;
+      text-transform: uppercase;
+      border-radius: 999px;
+      padding: .12rem .45rem;
+      margin-bottom: .35rem;
+    }
+    .node-tag.llm { background: #eaf1ff; color: #084275; }
+    .node-tag.det { background: #e6f6f0; color: var(--green); }
+    .links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .5rem;
+      margin-top: .65rem;
+    }
+    .links a {
+      display: inline-flex;
+      align-items: center;
+      font-size: .88rem;
+      font-weight: 600;
+      color: var(--blue);
+      text-decoration: none;
+      border: 1px solid #c8d7ef;
+      border-radius: 6px;
+      padding: .35rem .65rem;
+      background: #f5f8ff;
+    }
+    .links a:hover { border-color: var(--blue); }
+    @media (max-width: 540px) {
+      .flow-arrow { display: none; }
+      .flow { gap: .35rem; }
+    }
   </style>
 </head>
 <body>
@@ -67,53 +229,118 @@ AURA_ABOUT_HTML = """<!doctype html>
       <div class="brand-mark" aria-hidden="true">A</div>
       <strong>AURA</strong>
     </div>
-    <a href="..">&larr; Back to demo</a>
+    <nav class="header-nav" aria-label="Demo navigation">
+      <a href="..">&larr; Patient demo</a>
+      <a href="../provider/">Provider</a>
+    </nav>
   </header>
   <main>
-    <h1>About AURA — Ambient Wellness Companion</h1>
-    <p class="muted">A Google ADK multi-agent system for ambient elderly wellness check-ins, built for the Kaggle "Agents for Good" track.</p>
+    <div class="page-intro">
+      <h1>About AURA</h1>
+      <p>Ambient wellness check-ins for elderly care, built with Google ADK 2.0 for the Kaggle
+      <strong>Agents for Good</strong> capstone. Natural-language conversations update structured
+      wellness metrics, escalate critical cases to caregivers, and keep LLM agents away from direct
+      database writes.</p>
+    </div>
 
     <section>
       <h2>The problem</h2>
-      <p>Elderly patients living independently often go unmonitored between caregiver visits. Missed
-      medication and undetected mood decline are leading causes of preventable hospitalizations.
-      Caregivers want an ambient check-in that catches problems early — without becoming a
-      surveillance tool that exposes sensitive health data.</p>
+      <p>Patients living independently often go unmonitored between caregiver visits. Missed medication
+      and undetected mood decline drive preventable hospitalizations. Caregivers need early warning
+      without turning daily check-ins into surveillance or storing unnecessary health narrative in
+      telemetry.</p>
     </section>
 
     <section>
       <h2>How it works</h2>
-      <p>Every check-in flows through a three-node ADK state graph, each node scoped to the minimum
-      tool access it needs:</p>
-      <div class="pipeline">
-        <span>Companion (LLM)</span> &rarr; <span>Privacy Guard (deterministic)</span> &rarr; <span>Escalation (rules)</span> &rarr; <span>alert / normal</span>
+      <p>Each patient message runs through a state-driven ADK workflow. LLM nodes handle language;
+      deterministic Python nodes handle persistence and escalation routing.</p>
+      <div class="flow" aria-label="Agent workflow pipeline">
+        <span class="flow-step det">Log input</span>
+        <span class="flow-arrow" aria-hidden="true">&rarr;</span>
+        <span class="flow-step llm">Med extractor</span>
+        <span class="flow-arrow" aria-hidden="true">&rarr;</span>
+        <span class="flow-step llm">Companion</span>
+        <span class="flow-arrow" aria-hidden="true">&rarr;</span>
+        <span class="flow-step det">Privacy guard</span>
+        <span class="flow-arrow" aria-hidden="true">&rarr;</span>
+        <span class="flow-step det">Escalation</span>
+        <span class="flow-arrow" aria-hidden="true">&rarr;</span>
+        <span class="flow-step route">Alert / normal</span>
       </div>
-      <ul>
-        <li><strong>MedicationExtractorNode</strong> — maps patient wording to per-med ids from the injected schedule.</li>
-        <li><strong>CompanionNode</strong> — empathetic Gemini agent for mood and reply; no database write access.</li>
-        <li><strong>Privacy Guard</strong> — deterministic Python node with server-side allowlist validation; the only step that writes wellness metrics to patient JSON.</li>
-        <li><strong>EscalationNode</strong> — deterministic Python, not an LLM call, for the highest-stakes decision: whether to alert a caregiver.</li>
-      </ul>
-      <p>This is real tool isolation, not an organizational convention: a prompt-injected Companion
-      response cannot cause a database write, because the write tool simply isn't in its toolset.</p>
+      <div class="node-grid">
+        <div class="node-card">
+          <span class="node-tag det">Pre-process</span>
+          <h3>log_input_node</h3>
+          <p>Records the patient message, resolves the active profile, and injects the medication
+          schedule with <code>id=</code> keys for downstream extraction.</p>
+        </div>
+        <div class="node-card">
+          <span class="node-tag llm">LLM</span>
+          <h3>MedicationExtractorNode</h3>
+          <p>Maps natural language to exact medication ids and outputs
+          <code>medication_updates</code> plus a compliance flag. No database write tools.</p>
+        </div>
+        <div class="node-card">
+          <span class="node-tag llm">LLM</span>
+          <h3>CompanionNode</h3>
+          <p>Generates an empathetic reply and mood score (1&ndash;10). Reads extraction output but
+          cannot persist metrics itself.</p>
+        </div>
+        <div class="node-card">
+          <span class="node-tag det">Deterministic</span>
+          <h3>persist_metrics_node</h3>
+          <p>Merges companion mood with extractor output, validates against a server-side allowlist,
+          and writes the only permitted fields to patient JSON via MCP.</p>
+        </div>
+        <div class="node-card">
+          <span class="node-tag det">Deterministic</span>
+          <h3>EscalationNode</h3>
+          <p>Updates consecutive missed-cycle counters and routes to <strong>alert</strong> when
+          <code>consecutive_missed_cycles &ge; 2</code> or <code>mood_score &lt; 3</code>; otherwise
+          <strong>normal</strong>. No LLM call for this decision.</p>
+        </div>
+      </div>
+      <p>Tool isolation is enforced in code: companion and extractor agents never receive write
+      tools, so a prompt injection cannot push arbitrary data into the secure store.</p>
     </section>
 
     <section>
       <h2>Privacy by construction</h2>
-      <p>The metrics tool enforces a server-side allowlist: only <code>mood_score</code> (1-10),
-      <code>medication_compliance</code> (bool), and <code>medication_updates</code>
-      (<code>taken</code>/<code>missed</code>/<code>pending</code> per medication) may pass through.
-      Anything else — free text, names — is rejected before it is stored. Telemetry is keyed by a
-      one-way hash of the patient id, never the plaintext id; the human-readable record used for the
-      passcode-gated dashboard is a separate structure.</p>
+      <p>The MCP metrics path accepts only <code>mood_score</code>, <code>medication_compliance</code>,
+      and <code>medication_updates</code> (<code>taken</code> / <code>missed</code> /
+      <code>pending</code> per med). Extra keys or invalid values are rejected before storage.</p>
+      <p>Patient dashboard JSON is passcode-gated and scoped to one profile at a time. Longitudinal
+      telemetry history is keyed by a one-way <code>subject_hash</code> of the patient id, separate
+      from the human-readable dashboard record. Activity logs track agent runs without exposing
+      passcodes in API responses.</p>
+    </section>
+
+    <section>
+      <h2>Demo surfaces</h2>
+      <ul>
+        <li><strong>Patient view</strong> (<a href="..">/</a>) &mdash; passcode unlock, companion
+        chat, live patient JSON, agent activity sidebar, guided demo prompts.</li>
+        <li><strong>Provider view</strong> (<a href="../provider/">/provider/</a>) &mdash; roster,
+        alert inbox, patient drill-down, and demo CRUD behind a provider passcode.</li>
+        <li><strong>Reset demo data</strong> restores clinical seed data from
+        <code>app/seed_db.json</code> for repeatable judge walkthroughs.</li>
+      </ul>
+      <p class="muted" style="color: var(--muted); margin-top: .75rem;">Demo passcodes are configured
+      on the server via environment variables. See the competition writeup or video for judge access.</p>
     </section>
 
     <section>
       <h2>Why it matters</h2>
-      <p>Caregivers are notified only when it matters — two or more missed cycles, or a critical mood
-      score — instead of on every check-in, which reduces alert fatigue. Patients get a low-friction,
-      conversational interface with no app literacy required. And the privacy architecture is
-      verifiable in code, which matters for a tool that touches health data.</p>
+      <p>Caregivers hear about problems when thresholds are crossed, not on every routine check-in.
+      Patients interact through conversation instead of forms. And because persistence and escalation
+      are deterministic and testable, the safety model can be reviewed in source &mdash; important for
+      anything touching health data.</p>
+      <div class="links">
+        <a href="https://github.com/agopalareddy/wellness-companion" rel="noopener">GitHub</a>
+        <a href="https://agreddy.com/projects/wellness-companion" rel="noopener">Project write-up</a>
+        <a href="..">Open demo</a>
+      </div>
     </section>
   </main>
 </body>
