@@ -29,7 +29,7 @@ from pydantic import BaseModel, Field
 
 from app.app_utils.telemetry import setup_telemetry
 from app.aura_ui import AURA_ABOUT_HTML, AURA_INDEX_HTML, AURA_PROVIDER_HTML
-from app.graph import _user_api_key
+from app.api_key_context import _user_api_key
 
 setup_telemetry()
 

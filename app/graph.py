@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import contextvars
 import os
 from typing import Literal
 
@@ -119,10 +118,7 @@ def _format_check_in_context(patient_id: str, user_text: str) -> str:
     return "\n".join(lines)
 
 
-# ponytail: contextvar lets middleware inject per-request API key w/o env var races.
-_user_api_key: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "user_api_key", default=None
-)
+from .api_key_context import _user_api_key
 
 _MOCK_LLM = os.getenv("MOCK_LLM", "").lower() == "true"
 
