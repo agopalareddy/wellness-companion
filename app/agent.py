@@ -16,16 +16,23 @@ import os
 
 import google.auth
 
-# Setup environment variables for GenAI models
-try:
-    _, project_id = google.auth.default()
-    os.environ["GOOGLE_CLOUD_PROJECT"] = project_id
-except Exception:
-    # Fallback if no default credentials during local/dry-run execution
-    os.environ.setdefault("GOOGLE_CLOUD_PROJECT", "mock-project-id")
+# Setup environment variables for GenAI models.
+# GOOGLE_API_KEY env var → AI Studio mode (user or deployer credentials).
+# No GOOGLE_API_KEY → Vertex AI via Application Default Credentials (existing behavior).
+if os.getenv("GOOGLE_API_KEY"):
+    # AI Studio mode — genai SDK auto-detects GOOGLE_API_KEY from env.
+    # Do NOT set GOOGLE_GENAI_USE_VERTEXAI (it would override the API key).
+    os.environ.setdefault("GOOGLE_CLOUD_PROJECT", "ai-studio-user")
+else:
+    os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "True"
+    try:
+        _, project_id = google.auth.default()
+        os.environ["GOOGLE_CLOUD_PROJECT"] = project_id
+    except Exception:
+        # Fallback if no default credentials during local/dry-run execution
+        os.environ.setdefault("GOOGLE_CLOUD_PROJECT", "mock-project-id")
 
 os.environ["GOOGLE_CLOUD_LOCATION"] = "global"
-os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "True"
 
 from google.adk.apps import App
 

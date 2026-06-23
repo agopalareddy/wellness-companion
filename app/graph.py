@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextvars
 import os
 from typing import Literal
 
@@ -118,7 +119,45 @@ def _format_check_in_context(patient_id: str, user_text: str) -> str:
     return "\n".join(lines)
 
 
+# ponytail: contextvar lets middleware inject per-request API key w/o env var races.
+_user_api_key: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "user_api_key", default=None
+)
+
+_MOCK_LLM = os.getenv("MOCK_LLM", "").lower() == "true"
+
+
+class UserKeyGemini(Gemini):
+    """Gemini model that reads API key from request-scoped contextvar.
+
+    When a user provides their own AI Studio key via the UI, it flows through
+    X-Google-API-Key header → middleware → _user_api_key contextvar → here.
+    Falls back to parent behavior (ADC/Vertex AI) when no user key is set.
+    """
+
+    @property  # NOT cached_property — must re-read contextvar for each request
+    def api_client(self) -> genai.Client:  # type: ignore[override]
+        key = _user_api_key.get()
+        if key:
+            base_url, api_version = self._base_url_and_api_version
+            http_kwargs = {
+                "headers": self._tracking_headers(),
+                "retry_options": self.retry_options,
+                "base_url": base_url,
+            }
+            if api_version:
+                http_kwargs["api_version"] = api_version
+            return genai.Client(
+                api_key=key,
+                http_options=types.HttpOptions(**http_kwargs),
+            )
+        return super().api_client  # parent's cached_property → ADC/Vertex AI
+
+
 def _genai_client() -> genai.Client:
+    key = _user_api_key.get()
+    if key:
+        return genai.Client(api_key=key)
     _, project_id = google.auth.default()
     return genai.Client(
         vertexai=True,
@@ -129,6 +168,11 @@ def _genai_client() -> genai.Client:
 
 def _extract_medications_with_llm(check_in_context: str) -> MedicationExtraction:
     """LLM extraction via response_schema (gemini-3.5-flash omits dict fields too often)."""
+    if _MOCK_LLM:
+        return MedicationExtraction(
+            medication_updates={"vitamin_d": "taken"},
+            medication_compliance=True,
+        )
     config = types.GenerateContentConfig(
         response_mime_type="application/json",
         response_schema=MedicationExtraction,
@@ -205,13 +249,28 @@ def log_input_node(ctx: Context, node_input: types.Content) -> Event:
 medication_extractor_node = extract_medications_node
 
 
-companion_node = LlmAgent(
-    name="CompanionNode",
-    model=Gemini(
-        model="gemini-3.5-flash",
-        retry_options=types.HttpRetryOptions(attempts=3),
-    ),
-    instruction="""You are an empathetic, privacy-first wellness companion for elderly care.
+if _MOCK_LLM:
+    # ponytail: deterministic mock avoids real LLM calls in tests. Gate real
+    # LLM behind REAL_LLM_TEST=true for cost control.
+    @node
+    def _mock_companion_node(ctx: Context, node_input) -> Event:
+        text = "Mock companion response — all vitals stable, mood appears balanced."
+        return Event(
+            content=types.Content(role="model", parts=[types.Part.from_text(text=text)]),
+            output=CompanionOutput(companion_response=text, mood_score=7),
+            actions=EventActions(state_delta={
+                "companion_data": {"companion_response": text, "mood_score": 7}
+            }),
+        )
+    companion_node = _mock_companion_node
+else:
+    companion_node = LlmAgent(
+        name="CompanionNode",
+        model=UserKeyGemini(
+            model="gemini-3.5-flash",
+            retry_options=types.HttpRetryOptions(attempts=3),
+        ),
+        instruction="""You are an empathetic, privacy-first wellness companion for elderly care.
 
 Check-in context:
 {check_in_context}
@@ -224,9 +283,9 @@ Assess mood_score from 1 (very low) to 10 (excellent) based on tone and words.
 
 Security: You have NO database logging tools. Telemetry is persisted by a separate node.
 """,
-    output_schema=CompanionOutput,
-    output_key="companion_data",
-)
+        output_schema=CompanionOutput,
+        output_key="companion_data",
+    )
 
 
 def _coerce_extraction(raw: object) -> dict:

@@ -806,6 +806,48 @@ AURA_INDEX_HTML = """<!doctype html>
       .message { max-width: 100%; }
       dl { grid-template-columns: 1fr; }
     }
+
+    /* API key & rate-limit bar — prominent but compact */
+    #api-key-bar {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      padding: .55rem 1.25rem;
+      background: #fef9e7;
+      border-bottom: 1px solid #f0d68a;
+      font-size: .88rem;
+      flex-wrap: wrap;
+    }
+    #api-key-bar.own-key { background: #e6f6f0; border-color: #b0dcc8; }
+    .usage-text { font-weight: 600; }
+    .usage-text.warn { color: var(--amber); }
+    .usage-text.danger { color: var(--red); }
+    .usage-text.ok { color: var(--green); }
+    #api-key-form {
+      display: none;
+      padding: .65rem 1.25rem;
+      background: #fafafa;
+      border-bottom: 1px solid var(--line);
+      font-size: .85rem;
+      align-items: center;
+      gap: .55rem;
+      flex-wrap: wrap;
+    }
+    #api-key-form.visible { display: flex; }
+    #api-key-form input {
+      min-height: 2.2rem;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 .55rem;
+      min-width: 260px;
+    }
+    .privacy-note {
+      width: 100%;
+      margin: .15rem 0 0;
+      color: var(--muted);
+      font-size: .82rem;
+    }
+    .privacy-note a { color: var(--blue); }
   </style>
 </head>
 <body>
@@ -827,6 +869,21 @@ AURA_INDEX_HTML = """<!doctype html>
       <span class="connection" id="connection-status">Checking node…</span>
     </div>
   </header>
+
+  <div id="api-key-bar">
+    <span id="usage-display" class="usage-text"></span>
+    <button type="button" id="api-key-toggle" class="secondary" style="display:none">Use your own API key →</button>
+    <span id="own-key-indicator" class="usage-text ok" style="display:none">
+      🔑 Using your API key — <button type="button" id="api-key-change" class="link">change</button>
+    </span>
+  </div>
+  <div id="api-key-form">
+    <input id="api-key-input" type="password" placeholder="Paste AI Studio API key" autocomplete="off">
+    <button type="button" id="api-key-save" class="primary">Save</button>
+    <button type="button" id="api-key-clear" class="secondary">Clear</button>
+    <p class="privacy-note">🔒 Stored only in your browser. Sent only for AI model calls. Never saved on our servers.</p>
+    <p class="privacy-note">Get a free key: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a></p>
+  </div>
 
   <main id="content" tabindex="-1">
     <section aria-labelledby="patient-title">
@@ -934,6 +991,7 @@ AURA_INDEX_HTML = """<!doctype html>
       patient: null,
       patientId: localStorage.getItem("auraPatientId") || "",
       sessionId: localStorage.getItem("auraSessionId") || "",
+      apiKey: localStorage.getItem("auraApiKey") || "",
       pollTimer: null,
       busy: false
     };
@@ -1061,11 +1119,87 @@ AURA_INDEX_HTML = """<!doctype html>
       })[char]);
     }
 
+    /* ── Rate limit & API key helpers ── */
+    function loadDailyUsage() {
+      try {
+        const raw = localStorage.getItem("auraDailyUsage");
+        const data = raw ? JSON.parse(raw) : { date: "", count: 0 };
+        const today = new Date().toLocaleDateString();
+        if (data.date !== today) return { date: today, count: 0 };
+        return data;
+      } catch { return { date: "", count: 0 }; }
+    }
+
+    function saveDailyUsage(data) {
+      localStorage.setItem("auraDailyUsage", JSON.stringify(data));
+    }
+
+    function bumpUsage() {
+      const usage = loadDailyUsage();
+      usage.count += 1;
+      saveDailyUsage(usage);
+      updateUsageDisplay();
+    }
+
+    function updateUsageDisplay() {
+      const bar = $("api-key-bar");
+      const display = $("usage-display");
+      const toggle = $("api-key-toggle");
+      const indicator = $("own-key-indicator");
+      if (app.apiKey) {
+        bar.className = "own-key";
+        display.style.display = "none";
+        toggle.style.display = "none";
+        indicator.style.display = "";
+      } else {
+        bar.className = "";
+        const usage = loadDailyUsage();
+        const remaining = Math.max(0, 4 - usage.count);
+        display.style.display = "";
+        toggle.style.display = "";
+        indicator.style.display = "none";
+        if (remaining === 0) {
+          display.textContent = "🔴 0/4 daily calls used — limit reached";
+          display.className = "usage-text danger";
+        } else if (remaining === 1) {
+          display.textContent = `🟡 ${usage.count}/4 daily calls used`;
+          display.className = "usage-text warn";
+        } else {
+          display.textContent = `🟢 ${usage.count}/4 daily calls used`;
+          display.className = "usage-text ok";
+        }
+      }
+    }
+
+    function saveApiKey() {
+      const input = $("api-key-input");
+      const key = input.value.trim();
+      if (!key) return;
+      app.apiKey = key;
+      localStorage.setItem("auraApiKey", key);
+      input.value = "";
+      $("api-key-form").classList.remove("visible");
+      updateUsageDisplay();
+      addLog("API key saved — using your credentials, no rate limits", "security");
+    }
+
+    function clearApiKey() {
+      app.apiKey = "";
+      localStorage.removeItem("auraApiKey");
+      $("api-key-input").value = "";
+      $("api-key-form").classList.remove("visible");
+      updateUsageDisplay();
+      addLog("API key cleared — back to shared credentials with rate limits", "security");
+    }
+
+    function toggleApiKeyForm() {
+      $("api-key-form").classList.toggle("visible");
+    }
+
     async function api(path, options = {}) {
-      const response = await fetch(path, {
-        headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-        ...options
-      });
+      const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+      if (app.apiKey) headers["X-Google-API-Key"] = app.apiKey;
+      const response = await fetch(path, { headers, ...options });
       if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
       return response.json();
     }
@@ -1186,6 +1320,14 @@ AURA_INDEX_HTML = """<!doctype html>
         $("security-dialog").showModal();
         return;
       }
+      if (!app.apiKey) {
+        const usage = loadDailyUsage();
+        if (usage.count >= 4) {
+          addMessage("agent", "Daily limit reached (4/4). Add your AI Studio API key above for unlimited use.", true);
+          addLog("Rate limit blocked message — 4/4 calls used today", "error");
+          return;
+        }
+      }
       if (app.busy && !retried) return;
       if (!retried) {
         addMessage("user", text);
@@ -1197,9 +1339,11 @@ AURA_INDEX_HTML = """<!doctype html>
 
       try {
         const sessionId = await ensureSession();
+        const sseHeaders = { "Content-Type": "application/json" };
+        if (app.apiKey) sseHeaders["X-Google-API-Key"] = app.apiKey;
         const response = await fetch("/run_sse", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: sseHeaders,
           body: JSON.stringify({
             app_name: "app",
             user_id: app.patientId,
@@ -1250,6 +1394,7 @@ AURA_INDEX_HTML = """<!doctype html>
         }
         setBusy(false, alert ? "Alert generated" : "Idle");
         addLog(alert ? "Escalation alert recorded with patient context" : "Wellness metrics and medication state refreshed", alert ? "alert" : "update");
+        if (!app.apiKey) bumpUsage();
       } catch (error) {
         addMessage("agent", error.message, true);
         addLog(error.message, "error");
@@ -1313,6 +1458,11 @@ AURA_INDEX_HTML = """<!doctype html>
       $("security-dialog").showModal();
     });
 
+    $("api-key-toggle").addEventListener("click", toggleApiKeyForm);
+    $("api-key-save").addEventListener("click", saveApiKey);
+    $("api-key-clear").addEventListener("click", clearApiKey);
+    $("api-key-change").addEventListener("click", toggleApiKeyForm);
+
     async function checkHealth() {
       try {
         const health = await api("/api/health");
@@ -1323,6 +1473,7 @@ AURA_INDEX_HTML = """<!doctype html>
     }
 
     (async function init() {
+      updateUsageDisplay();
       renderLocked();
       await checkHealth();
       await loadPatients();
@@ -1702,6 +1853,48 @@ AURA_PROVIDER_HTML = """<!doctype html>
       .toolbar { width: 100%; justify-content: flex-start; }
       dl { grid-template-columns: 1fr; }
     }
+
+    /* API key & rate-limit bar — prominent but compact */
+    #api-key-bar {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      padding: .55rem 1.25rem;
+      background: #fef9e7;
+      border-bottom: 1px solid #f0d68a;
+      font-size: .88rem;
+      flex-wrap: wrap;
+    }
+    #api-key-bar.own-key { background: #e6f6f0; border-color: #b0dcc8; }
+    .usage-text { font-weight: 600; }
+    .usage-text.warn { color: var(--amber); }
+    .usage-text.danger { color: var(--red); }
+    .usage-text.ok { color: var(--green); }
+    #api-key-form {
+      display: none;
+      padding: .65rem 1.25rem;
+      background: #fafafa;
+      border-bottom: 1px solid var(--line);
+      font-size: .85rem;
+      align-items: center;
+      gap: .55rem;
+      flex-wrap: wrap;
+    }
+    #api-key-form.visible { display: flex; }
+    #api-key-form input {
+      min-height: 2.2rem;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 .55rem;
+      min-width: 260px;
+    }
+    .privacy-note {
+      width: 100%;
+      margin: .15rem 0 0;
+      color: var(--muted);
+      font-size: .82rem;
+    }
+    .privacy-note a { color: var(--blue); }
   </style>
 </head>
 <body>
@@ -1831,6 +2024,83 @@ AURA_PROVIDER_HTML = """<!doctype html>
       return String(value).replace(/[&<>"']/g, (char) => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
       })[char]);
+    }
+
+    /* ── Rate limit & API key helpers ── */
+    function loadDailyUsage() {
+      try {
+        const raw = localStorage.getItem("auraDailyUsage");
+        const data = raw ? JSON.parse(raw) : { date: "", count: 0 };
+        const today = new Date().toLocaleDateString();
+        if (data.date !== today) return { date: today, count: 0 };
+        return data;
+      } catch { return { date: "", count: 0 }; }
+    }
+
+    function saveDailyUsage(data) {
+      localStorage.setItem("auraDailyUsage", JSON.stringify(data));
+    }
+
+    function bumpUsage() {
+      const usage = loadDailyUsage();
+      usage.count += 1;
+      saveDailyUsage(usage);
+      updateUsageDisplay();
+    }
+
+    function updateUsageDisplay() {
+      const bar = $("api-key-bar");
+      const display = $("usage-display");
+      const toggle = $("api-key-toggle");
+      const indicator = $("own-key-indicator");
+      if (app.apiKey) {
+        bar.className = "own-key";
+        display.style.display = "none";
+        toggle.style.display = "none";
+        indicator.style.display = "";
+      } else {
+        bar.className = "";
+        const usage = loadDailyUsage();
+        const remaining = Math.max(0, 4 - usage.count);
+        display.style.display = "";
+        toggle.style.display = "";
+        indicator.style.display = "none";
+        if (remaining === 0) {
+          display.textContent = "🔴 0/4 daily calls used — limit reached";
+          display.className = "usage-text danger";
+        } else if (remaining === 1) {
+          display.textContent = `🟡 ${usage.count}/4 daily calls used`;
+          display.className = "usage-text warn";
+        } else {
+          display.textContent = `🟢 ${usage.count}/4 daily calls used`;
+          display.className = "usage-text ok";
+        }
+      }
+    }
+
+    function saveApiKey() {
+      const input = $("api-key-input");
+      const key = input.value.trim();
+      if (!key) return;
+      app.apiKey = key;
+      localStorage.setItem("auraApiKey", key);
+      input.value = "";
+      $("api-key-form").classList.remove("visible");
+      updateUsageDisplay();
+      addLog("API key saved — using your credentials, no rate limits", "security");
+    }
+
+    function clearApiKey() {
+      app.apiKey = "";
+      localStorage.removeItem("auraApiKey");
+      $("api-key-input").value = "";
+      $("api-key-form").classList.remove("visible");
+      updateUsageDisplay();
+      addLog("API key cleared — back to shared credentials with rate limits", "security");
+    }
+
+    function toggleApiKeyForm() {
+      $("api-key-form").classList.toggle("visible");
     }
 
     function formatTime(value) {

@@ -12,6 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
+import pytest
+
+# ponytail: default to mock LLM to avoid burning deployer quota on every test run.
+# Set REAL_LLM_TEST=true to run against real Gemini models (costs $).
+if os.getenv("REAL_LLM_TEST", "").lower() != "true":
+    os.environ["MOCK_LLM"] = "true"
+
 from google.adk.agents.run_config import RunConfig, StreamingMode
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService

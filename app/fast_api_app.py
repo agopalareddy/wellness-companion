@@ -21,15 +21,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import google.auth
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from google.adk.cli.fast_api import get_fast_api_app
 from google.cloud import logging as google_cloud_logging
 from pydantic import BaseModel, Field
 
 from app.app_utils.telemetry import setup_telemetry
-from app.app_utils.typing import Feedback
 from app.aura_ui import AURA_ABOUT_HTML, AURA_INDEX_HTML, AURA_PROVIDER_HTML
+from app.graph import _user_api_key
 
 setup_telemetry()
 
@@ -51,10 +51,6 @@ else:
         logger = python_logging.getLogger(__name__)
         VERTEX_OK = False
 
-allow_origins = (
-    os.getenv("ALLOW_ORIGINS", "").split(",") if os.getenv("ALLOW_ORIGINS") else None
-)
-
 logs_bucket_name = os.environ.get("LOGS_BUCKET_NAME")
 
 AGENT_DIR = str(Path(__file__).resolve().parent)
@@ -74,12 +70,24 @@ app: FastAPI = get_fast_api_app(
     agents_dir=AGENT_DIR,
     web=True,
     artifact_service_uri=artifact_service_uri,
-    allow_origins=allow_origins,
     session_service_uri=session_service_uri,
     otel_to_cloud=otel_to_cloud,
 )
 app.title = "wellness-companion"
 app.description = "API for interacting with the Agent wellness-companion"
+
+
+@app.middleware("http")
+async def inject_user_api_key(request: Request, call_next):
+    """Read X-Google-API-Key header → set contextvar for downstream genai clients."""
+    user_key = request.headers.get("X-Google-API-Key", "").strip() or None
+    token = _user_api_key.set(user_key)
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        _user_api_key.reset(token)
+
 
 APP_DIR = Path(__file__).resolve().parent
 DB_PATH = APP_DIR / "mock_secure_db.json"
@@ -210,15 +218,6 @@ def clear_patient_activity(patient_id: str) -> None:
     save_json(ACTIVITY_PATH, activity)
 
 
-@app.post("/feedback")
-def collect_feedback(feedback: Feedback) -> dict[str, str]:
-    if hasattr(logger, "log_struct"):
-        logger.log_struct(feedback.model_dump(), severity="INFO")
-    else:
-        logger.info(f"Feedback collected: {feedback.model_dump()}")
-    return {"status": "success"}
-
-
 class VerifyPasscodeRequest(BaseModel):
     passcode: str
 
@@ -295,6 +294,12 @@ def aura_about() -> str:
 @app.get("/api/health")
 def health() -> dict:
     return {"vertex_ok": VERTEX_OK}
+
+
+@app.get("/api/usage")
+def usage_limit() -> dict:
+    """Return rate limit info. Client-side enforces 4 calls/day per device."""
+    return {"limit": 4}
 
 
 @app.get("/api/patients")

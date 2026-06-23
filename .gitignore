@@ -205,3 +205,6 @@ my_env.tfvars
 
 # A2A Inspector
 tools/a2a-inspector/
+
+# Submission draft (contains demo passcodes for judges)
+docs/KAGGLE_WRITEUP.md

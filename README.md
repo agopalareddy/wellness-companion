@@ -127,9 +127,20 @@ uv run uvicorn app.fast_api_app:app --host 127.0.0.1 --port 8000
 
 | Variable | Purpose |
 |----------|---------|
+| `GOOGLE_API_KEY` | (Optional) Deployer-level Google AI Studio API key. When set, all LLM calls use AI Studio instead of Vertex AI. Users in the UI can also supply their own key, which takes precedence over this one. Get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey). |
 | `PROVIDER_PASSCODE` | Provider dashboard auth (required for CRUD) |
 | `PASSCODE_ARTHUR` / `PASSCODE_BEATRICE` / `PASSCODE_CHARLES` | Patient profile unlock codes |
 | `EXPOSE_DEMO_PASSCODES` | Set `true` locally to show passcodes in the UI helper |
+
+### User-provided API key & rate limiting
+
+When a user does **not** supply their own AI Studio API key, the companion enforces a **4 calls/day/device** rate limit to protect the deployer's quota. The remaining call count is shown prominently in a bar between the header and dashboard.
+
+Users can paste their own [Google AI Studio API key](https://aistudio.google.com/apikey) via the UI input at the top of the dashboard. When a user key is active:
+- No rate limits apply (the user's own quota is used)
+- The key is stored **only in the browser's localStorage** — never on the server
+- The key is sent exclusively as an `X-Google-API-Key` header for model calls
+- The bar turns green and shows "🔑 Using your API key"
 
 ### Running Tests and Linting
 To check code quality and execute unit tests (which validate the escalation logic in isolation):
