@@ -136,7 +136,7 @@ uv run uvicorn app.fast_api_app:app --host 127.0.0.1 --port 8000
 
 When a user does **not** supply their own AI Studio API key, the companion enforces a **4 calls/day/device** rate limit to protect the deployer's quota. The remaining call count is shown prominently in a bar between the header and dashboard.
 
-Users can paste their own [Google AI Studio API key](https://aistudio.google.com/apikey) via the UI input at the top of the dashboard. When a user key is active:
+Users can paste their own [Google AI Studio API key](https://aistudio.google.com/apikey) via the UI input at the top of the dashboard. Set a [spending limit](https://aistudio.google.com/spend) on your key to control costs. When a user key is active:
 - No rate limits apply (the user's own quota is used)
 - The key is stored **only in the browser's localStorage** — never on the server
 - The key is sent exclusively as an `X-Google-API-Key` header for model calls

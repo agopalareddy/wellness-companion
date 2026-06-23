@@ -882,7 +882,7 @@ AURA_INDEX_HTML = """<!doctype html>
     <button type="button" id="api-key-save" class="primary">Save</button>
     <button type="button" id="api-key-clear" class="secondary">Clear</button>
     <p class="privacy-note">🔒 Stored only in your browser. Sent only for AI model calls. Never saved on our servers.</p>
-    <p class="privacy-note">Get a free key: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a></p>
+    <p class="privacy-note">Get a free key: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Set a spending limit: <a href="https://aistudio.google.com/spend" target="_blank" rel="noopener">aistudio.google.com/spend</a></p>
   </div>
 
   <main id="content" tabindex="-1">
